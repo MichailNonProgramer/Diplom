@@ -39,7 +39,7 @@ from cryptography.hazmat.primitives.kdf.hkdf import HKDFExpand
 from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 from OpenSSL import crypto
 
-from .buffer import Buffer
+from Protocol.buffer import Buffer
 
 TLS_VERSION_1_2 = 0x0303
 TLS_VERSION_1_3 = 0x0304
