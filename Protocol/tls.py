@@ -37,8 +37,8 @@ from cryptography.hazmat.primitives.asymmetric import (
 )
 from cryptography.hazmat.primitives.kdf.hkdf import HKDFExpand
 from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
-from OpenSSL import crypto
 
+from Protocol.QUIC import crypto
 from Protocol.buffer import Buffer
 
 TLS_VERSION_1_2 = 0x0303
@@ -149,19 +149,19 @@ class State(Enum):
 def hkdf_label(label: bytes, hash_value: bytes, length: int) -> bytes:
     full_label = b"tls13 " + label
     return (
-        struct.pack("!HB", length, len(full_label))
-        + full_label
-        + struct.pack("!B", len(hash_value))
-        + hash_value
+            struct.pack("!HB", length, len(full_label))
+            + full_label
+            + struct.pack("!B", len(hash_value))
+            + hash_value
     )
 
 
 def hkdf_expand_label(
-    algorithm: hashes.HashAlgorithm,
-    secret: bytes,
-    label: bytes,
-    hash_value: bytes,
-    length: int,
+        algorithm: hashes.HashAlgorithm,
+        secret: bytes,
+        label: bytes,
+        hash_value: bytes,
+        length: int,
 ) -> bytes:
     return HKDFExpand(
         algorithm=algorithm,
@@ -171,7 +171,7 @@ def hkdf_expand_label(
 
 
 def hkdf_extract(
-    algorithm: hashes.HashAlgorithm, salt: bytes, key_material: bytes
+        algorithm: hashes.HashAlgorithm, salt: bytes, key_material: bytes
 ) -> bytes:
     h = hmac.HMAC(salt, algorithm)
     h.update(key_material)
@@ -179,7 +179,7 @@ def hkdf_extract(
 
 
 def load_pem_private_key(
-    data: bytes, password: Optional[bytes] = None
+        data: bytes, password: Optional[bytes] = None
 ) -> Union[dsa.DSAPrivateKey, ec.EllipticCurvePrivateKey, rsa.RSAPrivateKey]:
     """
     Load a PEM-encoded private key.
@@ -200,12 +200,12 @@ def load_pem_x509_certificates(data: bytes) -> List[x509.Certificate]:
 
 
 def verify_certificate(
-    certificate: x509.Certificate,
-    chain: List[x509.Certificate] = [],
-    server_name: Optional[str] = None,
-    cadata: Optional[bytes] = None,
-    cafile: Optional[str] = None,
-    capath: Optional[str] = None,
+        certificate: x509.Certificate,
+        chain: List[x509.Certificate] = [],
+        server_name: Optional[str] = None,
+        cadata: Optional[bytes] = None,
+        cafile: Optional[str] = None,
+        capath: Optional[str] = None,
 ) -> None:
     # verify dates
     now = utcnow()
@@ -380,7 +380,7 @@ def pull_list(buf: Buffer, capacity: int, func: Callable[[], T]) -> List[T]:
 
 
 def push_list(
-    buf: Buffer, capacity: int, func: Callable[[T], None], values: Sequence[T]
+        buf: Buffer, capacity: int, func: Callable[[T], None], values: Sequence[T]
 ) -> None:
     """
     Push a list of items.
@@ -994,7 +994,7 @@ def cipher_suite_hash(cipher_suite: CipherSuite) -> hashes.HashAlgorithm:
 
 
 def decode_public_key(
-    key_share: KeyShareEntry,
+        key_share: KeyShareEntry,
 ) -> Union[ec.EllipticCurvePublicKey, x25519.X25519PublicKey, x448.X448PublicKey, None]:
     if key_share[0] == Group.X25519:
         return x25519.X25519PublicKey.from_public_bytes(key_share[1])
@@ -1009,9 +1009,9 @@ def decode_public_key(
 
 
 def encode_public_key(
-    public_key: Union[
-        ec.EllipticCurvePublicKey, x25519.X25519PublicKey, x448.X448PublicKey
-    ]
+        public_key: Union[
+            ec.EllipticCurvePublicKey, x25519.X25519PublicKey, x448.X448PublicKey
+        ]
 ) -> KeyShareEntry:
     if isinstance(public_key, x25519.X25519PublicKey):
         return (Group.X25519, public_key.public_bytes(Encoding.Raw, PublicFormat.Raw))
@@ -1024,7 +1024,7 @@ def encode_public_key(
 
 
 def negotiate(
-    supported: List[T], offered: Optional[List[Any]], exc: Optional[Alert] = None
+        supported: List[T], offered: Optional[List[Any]], exc: Optional[Alert] = None
 ) -> T:
     if offered is not None:
         for c in supported:
@@ -1055,7 +1055,7 @@ def signature_algorithm_params(signature_algorithm: int) -> Tuple:
 
 @contextmanager
 def push_message(
-    key_schedule: Union[KeySchedule, KeyScheduleProxy], buf: Buffer
+        key_schedule: Union[KeySchedule, KeyScheduleProxy], buf: Buffer
 ) -> Generator:
     hash_start = buf.tell()
     yield
@@ -1100,17 +1100,17 @@ SessionTicketHandler = Callable[[SessionTicket], None]
 
 class Context:
     def __init__(
-        self,
-        is_client: bool,
-        alpn_protocols: Optional[List[str]] = None,
-        cadata: Optional[bytes] = None,
-        cafile: Optional[str] = None,
-        capath: Optional[str] = None,
-        cipher_suites: Optional[List[CipherSuite]] = None,
-        logger: Optional[Union[logging.Logger, logging.LoggerAdapter]] = None,
-        max_early_data: Optional[int] = None,
-        server_name: Optional[str] = None,
-        verify_mode: Optional[int] = None,
+            self,
+            is_client: bool,
+            alpn_protocols: Optional[List[str]] = None,
+            cadata: Optional[bytes] = None,
+            cafile: Optional[str] = None,
+            capath: Optional[str] = None,
+            cipher_suites: Optional[List[CipherSuite]] = None,
+            logger: Optional[Union[logging.Logger, logging.LoggerAdapter]] = None,
+            max_early_data: Optional[int] = None,
+            server_name: Optional[str] = None,
+            verify_mode: Optional[int] = None,
     ):
         # configuration
         self._alpn_protocols = alpn_protocols
@@ -1204,7 +1204,7 @@ class Context:
         return self._session_resumed
 
     def handle_message(
-        self, input_data: bytes, output_buf: Dict[Epoch, Buffer]
+            self, input_data: bytes, output_buf: Dict[Epoch, Buffer]
     ) -> None:
         if self.state == State.CLIENT_HANDSHAKE_START:
             self._client_send_hello(output_buf[Epoch.INITIAL])
@@ -1283,7 +1283,7 @@ class Context:
             assert input_buf.eof()
 
     def _build_session_ticket(
-        self, new_session_ticket: NewSessionTicket, other_extensions: List[Extension]
+            self, new_session_ticket: NewSessionTicket, other_extensions: List[Extension]
     ) -> SessionTicket:
         resumption_master_secret = self.key_schedule.derive_secret(b"res master")
         resumption_secret = hkdf_expand_label(
@@ -1300,7 +1300,7 @@ class Context:
             cipher_suite=self.key_schedule.cipher_suite,
             max_early_data_size=new_session_ticket.max_early_data_size,
             not_valid_after=timestamp
-            + datetime.timedelta(seconds=new_session_ticket.ticket_lifetime),
+                            + datetime.timedelta(seconds=new_session_ticket.ticket_lifetime),
             not_valid_before=timestamp,
             other_extensions=other_extensions,
             resumption_secret=resumption_secret,
@@ -1414,9 +1414,9 @@ class Context:
         # select key schedule
         if peer_hello.pre_shared_key is not None:
             if (
-                self._key_schedule_psk is None
-                or peer_hello.pre_shared_key != 0
-                or cipher_suite != self._key_schedule_psk.cipher_suite
+                    self._key_schedule_psk is None
+                    or peer_hello.pre_shared_key != 0
+                    or cipher_suite != self._key_schedule_psk.cipher_suite
             ):
                 raise AlertIllegalParameter
             self.key_schedule = self._key_schedule_psk
@@ -1430,20 +1430,20 @@ class Context:
         peer_public_key = decode_public_key(peer_hello.key_share)
         shared_key: Optional[bytes] = None
         if (
-            isinstance(peer_public_key, x25519.X25519PublicKey)
-            and self._x25519_private_key is not None
+                isinstance(peer_public_key, x25519.X25519PublicKey)
+                and self._x25519_private_key is not None
         ):
             shared_key = self._x25519_private_key.exchange(peer_public_key)
         elif (
-            isinstance(peer_public_key, x448.X448PublicKey)
-            and self._x448_private_key is not None
+                isinstance(peer_public_key, x448.X448PublicKey)
+                and self._x448_private_key is not None
         ):
             shared_key = self._x448_private_key.exchange(peer_public_key)
         elif (
-            isinstance(peer_public_key, ec.EllipticCurvePublicKey)
-            and self._ec_private_key is not None
-            and self._ec_private_key.public_key().curve.__class__
-            == peer_public_key.curve.__class__
+                isinstance(peer_public_key, ec.EllipticCurvePublicKey)
+                and self._ec_private_key is not None
+                and self._ec_private_key.public_key().curve.__class__
+                == peer_public_key.curve.__class__
         ):
             shared_key = self._ec_private_key.exchange(ec.ECDH(), peer_public_key)
         assert shared_key is not None
@@ -1572,11 +1572,11 @@ class Context:
             self.new_session_ticket_cb(ticket)
 
     def _server_handle_hello(
-        self,
-        input_buf: Buffer,
-        initial_buf: Buffer,
-        handshake_buf: Buffer,
-        onertt_buf: Buffer,
+            self,
+            input_buf: Buffer,
+            initial_buf: Buffer,
+            handshake_buf: Buffer,
+            onertt_buf: Buffer,
     ) -> None:
         peer_hello = pull_client_hello(input_buf)
 
@@ -1589,7 +1589,7 @@ class Context:
                 SignatureAlgorithm.RSA_PKCS1_SHA1,
             ]
         elif isinstance(
-            self.certificate_private_key, ec.EllipticCurvePrivateKey
+                self.certificate_private_key, ec.EllipticCurvePrivateKey
         ) and isinstance(self.certificate_private_key.curve, ec.SECP256R1):
             signature_algorithms = [SignatureAlgorithm.ECDSA_SECP256R1_SHA256]
         elif isinstance(self.certificate_private_key, ed25519.Ed25519PrivateKey):
@@ -1640,11 +1640,11 @@ class Context:
         # select key schedule
         pre_shared_key = None
         if (
-            self.get_session_ticket_cb is not None
-            and psk_key_exchange_mode is not None
-            and peer_hello.pre_shared_key is not None
-            and len(peer_hello.pre_shared_key.identities) == 1
-            and len(peer_hello.pre_shared_key.binders) == 1
+                self.get_session_ticket_cb is not None
+                and psk_key_exchange_mode is not None
+                and peer_hello.pre_shared_key is not None
+                and len(peer_hello.pre_shared_key.identities) == 1
+                and len(peer_hello.pre_shared_key.binders) == 1
         ):
             # ask application to find session ticket
             identity = peer_hello.pre_shared_key.identities[0]
@@ -1652,9 +1652,9 @@ class Context:
 
             # validate session ticket
             if (
-                session_ticket is not None
-                and session_ticket.is_valid
-                and session_ticket.cipher_suite == cipher_suite
+                    session_ticket is not None
+                    and session_ticket.is_valid
+                    and session_ticket.cipher_suite == cipher_suite
             ):
                 self.key_schedule = KeySchedule(cipher_suite)
                 self.key_schedule.extract(session_ticket.resumption_secret)
@@ -1850,7 +1850,7 @@ class Context:
         self._set_state(State.SERVER_POST_HANDSHAKE)
 
     def _setup_traffic_protection(
-        self, direction: Direction, epoch: Epoch, label: bytes
+            self, direction: Direction, epoch: Epoch, label: bytes
     ) -> None:
         key = self.key_schedule.derive_secret(label)
 
@@ -1866,4 +1866,4 @@ class Context:
     def _set_state(self, state: State) -> None:
         if self.__logger:
             self.__logger.debug("TLS %s -> %s", self.state, state)
-        self.state =
+        self.state = state
