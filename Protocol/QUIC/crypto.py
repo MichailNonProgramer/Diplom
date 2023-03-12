@@ -3,7 +3,7 @@ from typing import Callable, Optional, Tuple
 
 from .._crypto import AEAD, CryptoError, HeaderProtection
 from ..tls import CipherSuite, cipher_suite_hash, hkdf_expand_label, hkdf_extract
-from .packet import decode_packet_number, is_draft_version, is_long_header
+from packet import decode_packet_number, is_draft_version, is_long_header
 
 CIPHER_SUITES = {
     CipherSuite.AES_128_GCM_SHA256: (b"aes-128-ecb", b"aes-128-gcm"),
@@ -14,7 +14,6 @@ INITIAL_CIPHER_SUITE = CipherSuite.AES_128_GCM_SHA256
 INITIAL_SALT_DRAFT_29 = binascii.unhexlify("afbfec289993d24c9e9786f19c6111e04390a899")
 INITIAL_SALT_VERSION_1 = binascii.unhexlify("38762cf7f55934b34d179ae6a4c80cadccbb7f0a")
 SAMPLE_SIZE = 16
-
 
 Callback = Callable[[str], None]
 
@@ -28,7 +27,7 @@ class KeyUnavailableError(CryptoError):
 
 
 def derive_key_iv_hp(
-    cipher_suite: CipherSuite, secret: bytes
+        cipher_suite: CipherSuite, secret: bytes
 ) -> Tuple[bytes, bytes, bytes]:
     algorithm = cipher_suite_hash(cipher_suite)
     if cipher_suite in [
@@ -47,10 +46,10 @@ def derive_key_iv_hp(
 
 class CryptoContext:
     def __init__(
-        self,
-        key_phase: int = 0,
-        setup_cb: Callback = NoCallback,
-        teardown_cb: Callback = NoCallback,
+            self,
+            key_phase: int = 0,
+            setup_cb: Callback = NoCallback,
+            teardown_cb: Callback = NoCallback,
     ) -> None:
         self.aead: Optional[AEAD] = None
         self.cipher_suite: Optional[CipherSuite] = None
@@ -62,7 +61,7 @@ class CryptoContext:
         self._teardown_cb = teardown_cb
 
     def decrypt_packet(
-        self, packet: bytes, encrypted_offset: int, expected_packet_number: int
+            self, packet: bytes, encrypted_offset: int, expected_packet_number: int
     ) -> Tuple[bytes, bytes, int, bool]:
         if self.aead is None:
             raise KeyUnavailableError("Decryption key is not available")
@@ -86,13 +85,13 @@ class CryptoContext:
 
         # payload protection
         payload = crypto.aead.decrypt(
-            packet[len(plain_header) :], plain_header, packet_number
+            packet[len(plain_header):], plain_header, packet_number
         )
 
         return plain_header, payload, packet_number, crypto != self
 
     def encrypt_packet(
-        self, plain_header: bytes, plain_payload: bytes, packet_number: int
+            self, plain_header: bytes, plain_payload: bytes, packet_number: int
     ) -> bytes:
         assert self.is_valid(), "Encryption key is not available"
 
@@ -155,11 +154,11 @@ def next_key_phase(self: CryptoContext) -> CryptoContext:
 
 class CryptoPair:
     def __init__(
-        self,
-        recv_setup_cb: Callback = NoCallback,
-        recv_teardown_cb: Callback = NoCallback,
-        send_setup_cb: Callback = NoCallback,
-        send_teardown_cb: Callback = NoCallback,
+            self,
+            recv_setup_cb: Callback = NoCallback,
+            recv_teardown_cb: Callback = NoCallback,
+            send_setup_cb: Callback = NoCallback,
+            send_teardown_cb: Callback = NoCallback,
     ) -> None:
         self.aead_tag_size = 16
         self.recv = CryptoContext(setup_cb=recv_setup_cb, teardown_cb=recv_teardown_cb)
@@ -167,7 +166,7 @@ class CryptoPair:
         self._update_key_requested = False
 
     def decrypt_packet(
-        self, packet: bytes, encrypted_offset: int, expected_packet_number: int
+            self, packet: bytes, encrypted_offset: int, expected_packet_number: int
     ) -> Tuple[bytes, bytes, int]:
         plain_header, payload, packet_number, update_key = self.recv.decrypt_packet(
             packet, encrypted_offset, expected_packet_number
@@ -177,7 +176,7 @@ class CryptoPair:
         return plain_header, payload, packet_number
 
     def encrypt_packet(
-        self, plain_header: bytes, plain_payload: bytes, packet_number: int
+            self, plain_header: bytes, plain_payload: bytes, packet_number: int
     ) -> bytes:
         if self._update_key_requested:
             self._update_key("local_update")
