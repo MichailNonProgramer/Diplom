@@ -1,4 +1,4 @@
-from .buffer import Buffer, BufferReadError, BufferWriteError  # noqa
+from ._buffer import Buffer, BufferReadError, BufferWriteError  # noqa
 
 UINT_VAR_MAX = 0x3FFFFFFFFFFFFFFF
 UINT_VAR_MAX_SIZE = 8
