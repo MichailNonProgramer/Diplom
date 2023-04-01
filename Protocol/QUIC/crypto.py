@@ -66,7 +66,6 @@ class CryptoContext:
         if self.aead is None:
             raise KeyUnavailableError("Decryption key is not available")
 
-        # header protection
         plain_header, packet_number = self.hp.remove(packet, encrypted_offset)
         first_byte = plain_header[0]
 
@@ -76,14 +75,12 @@ class CryptoContext:
             packet_number, pn_length * 8, expected_packet_number
         )
 
-        # detect key phase change
         crypto = self
         if not is_long_header(first_byte):
             key_phase = (first_byte & 4) >> 2
             if key_phase != self.key_phase:
                 crypto = next_key_phase(self)
 
-        # payload protection
         payload = crypto.aead.decrypt(
             packet[len(plain_header):], plain_header, packet_number
         )
@@ -95,12 +92,10 @@ class CryptoContext:
     ) -> bytes:
         assert self.is_valid(), "Encryption key is not available"
 
-        # payload protection
         protected_payload = self.aead.encrypt(
             plain_payload, plain_header, packet_number
         )
 
-        # header protection
         return self.hp.apply(plain_header, protected_payload)
 
     def is_valid(self) -> bool:
@@ -116,7 +111,6 @@ class CryptoContext:
         self.secret = secret
         self.version = version
 
-        # trigger callback
         self._setup_cb("tls")
 
     def teardown(self) -> None:
@@ -125,7 +119,6 @@ class CryptoContext:
         self.hp = None
         self.secret = None
 
-        # trigger callback
         self._teardown_cb("tls")
 
 
@@ -134,7 +127,7 @@ def apply_key_phase(self: CryptoContext, crypto: CryptoContext, trigger: str) ->
     self.key_phase = crypto.key_phase
     self.secret = crypto.secret
 
-    # trigger callback
+
     self._setup_cb(trigger)
 
 

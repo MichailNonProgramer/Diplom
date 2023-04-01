@@ -49,7 +49,6 @@ TLS_VERSION_1_3_DRAFT_26 = 0x7F1A
 
 T = TypeVar("T")
 
-# facilitate mocking for the test suite
 utcnow = datetime.datetime.utcnow
 
 
@@ -181,16 +180,10 @@ def hkdf_extract(
 def load_pem_private_key(
         data: bytes, password: Optional[bytes] = None
 ) -> Union[dsa.DSAPrivateKey, ec.EllipticCurvePrivateKey, rsa.RSAPrivateKey]:
-    """
-    Load a PEM-encoded private key.
-    """
     return serialization.load_pem_private_key(data, password=password)
 
 
 def load_pem_x509_certificates(data: bytes) -> List[x509.Certificate]:
-    """
-    Load a chain of PEM-encoded X509 certificates.
-    """
     boundary = b"-----END CERTIFICATE-----\n"
     certificates = []
     for chunk in data.split(boundary):
@@ -207,14 +200,12 @@ def verify_certificate(
         cafile: Optional[str] = None,
         capath: Optional[str] = None,
 ) -> None:
-    # verify dates
     now = utcnow()
     if now < certificate.not_valid_before:
         raise AlertCertificateExpired("Certificate is not valid yet")
     if now > certificate.not_valid_after:
         raise AlertCertificateExpired("Certificate is no longer valid")
 
-    # verify subject
     if server_name is not None:
         subject = []
         subjectAltName: List[Tuple[str, str]] = []
@@ -235,7 +226,6 @@ def verify_certificate(
         except ssl.CertificateError as exc:
             raise AlertBadCertificate("\n".join(exc.args)) from exc
 
-    # load CAs
     store = crypto.X509Store()
     store.load_locations(certifi.where())
     if cadata is not None:
@@ -245,7 +235,6 @@ def verify_certificate(
     if cafile is not None or capath is not None:
         store.load_locations(cafile, capath)
 
-    # verify certificate chain
     store_ctx = crypto.X509StoreContext(
         store,
         crypto.X509.from_cryptography(certificate),
@@ -331,13 +320,11 @@ class SignatureAlgorithm(IntEnum):
     RSA_PSS_RSAE_SHA384 = 0x0805
     RSA_PSS_RSAE_SHA512 = 0x0806
 
-    # legacy
     RSA_PKCS1_SHA1 = 0x0201
     SHA1_DSA = 0x0202
     ECDSA_SHA1 = 0x0203
 
 
-# BLOCKS
 
 
 @contextmanager
@@ -350,10 +337,6 @@ def pull_block(buf: Buffer, capacity: int) -> Generator:
 
 @contextmanager
 def push_block(buf: Buffer, capacity: int) -> Generator:
-    """
-    Context manager to push a variable-length block, with `capacity` bytes
-    to write the length.
-    """
     start = buf.tell() + capacity
     buf.seek(start)
     yield
@@ -364,13 +347,8 @@ def push_block(buf: Buffer, capacity: int) -> Generator:
     buf.seek(end)
 
 
-# LISTS
-
 
 def pull_list(buf: Buffer, capacity: int, func: Callable[[], T]) -> List[T]:
-    """
-    Pull a list of items.
-    """
     items = []
     with pull_block(buf, capacity) as length:
         end = buf.tell() + length
@@ -382,26 +360,18 @@ def pull_list(buf: Buffer, capacity: int, func: Callable[[], T]) -> List[T]:
 def push_list(
         buf: Buffer, capacity: int, func: Callable[[T], None], values: Sequence[T]
 ) -> None:
-    """
-    Push a list of items.
-    """
     with push_block(buf, capacity):
         for value in values:
             func(value)
 
 
 def pull_opaque(buf: Buffer, capacity: int) -> bytes:
-    """
-    Pull an opaque value prefixed by a length.
-    """
+
     with pull_block(buf, capacity) as length:
         return buf.pull_bytes(length)
 
 
 def push_opaque(buf: Buffer, capacity: int, value: bytes) -> None:
-    """
-    Push an opaque value prefix by a length.
-    """
     with push_block(buf, capacity):
         buf.push_bytes(value)
 
@@ -411,9 +381,6 @@ def push_extension(buf: Buffer, extension_type: int) -> Generator:
     buf.push_uint16(extension_type)
     with push_block(buf, 2):
         yield
-
-
-# KeyShareEntry
 
 
 KeyShareEntry = Tuple[int, bytes]
@@ -430,7 +397,6 @@ def push_key_share(buf: Buffer, value: KeyShareEntry) -> None:
     push_opaque(buf, 2, value[1])
 
 
-# ALPN
 
 
 def pull_alpn_protocol(buf: Buffer) -> str:
@@ -440,8 +406,6 @@ def pull_alpn_protocol(buf: Buffer) -> str:
 def push_alpn_protocol(buf: Buffer, protocol: str) -> None:
     push_opaque(buf, 1, protocol.encode("ascii"))
 
-
-# PRE SHARED KEY
 
 PskIdentity = Tuple[bytes, int]
 
@@ -465,7 +429,6 @@ def push_psk_binder(buf: Buffer, binder: bytes) -> None:
     push_opaque(buf, 1, binder)
 
 
-# MESSAGES
 
 Extension = Tuple[int, bytes]
 
@@ -483,7 +446,6 @@ class ClientHello:
     cipher_suites: List[int]
     legacy_compression_methods: List[int]
 
-    # extensions
     alpn_protocols: Optional[List[str]] = None
     early_data: bool = False
     key_share: Optional[List[KeyShareEntry]] = None
@@ -509,11 +471,9 @@ def pull_client_hello(buf: Buffer) -> ClientHello:
             legacy_compression_methods=pull_list(buf, 1, buf.pull_uint8),
         )
 
-        # extensions
         after_psk = False
 
         def pull_extension() -> None:
-            # pre_shared_key MUST be last
             nonlocal after_psk
             assert not after_psk
 
@@ -626,7 +586,6 @@ class ServerHello:
     cipher_suite: int
     compression_method: int
 
-    # extensions
     key_share: Optional[KeyShareEntry] = None
     pre_shared_key: Optional[int] = None
     supported_version: Optional[int] = None
@@ -645,7 +604,6 @@ def pull_server_hello(buf: Buffer) -> ServerHello:
             compression_method=buf.pull_uint8(),
         )
 
-        # extensions
         def pull_extension() -> None:
             extension_type = buf.pull_uint16()
             extension_length = buf.pull_uint16()
@@ -675,7 +633,6 @@ def push_server_hello(buf: Buffer, hello: ServerHello) -> None:
         buf.push_uint16(hello.cipher_suite)
         buf.push_uint8(hello.compression_method)
 
-        # extensions
         with push_block(buf, 2):
             if hello.supported_version is not None:
                 with push_extension(buf, ExtensionType.SUPPORTED_VERSIONS):
@@ -701,7 +658,6 @@ class NewSessionTicket:
     ticket_nonce: bytes = b""
     ticket: bytes = b""
 
-    # extensions
     max_early_data_size: Optional[int] = None
     other_extensions: List[Tuple[int, bytes]] = field(default_factory=list)
 
@@ -887,8 +843,6 @@ def push_finished(buf: Buffer, finished: Finished) -> None:
     push_opaque(buf, 3, finished.verify_data)
 
 
-# CONTEXT
-
 
 class KeySchedule:
     def __init__(self, cipher_suite: CipherSuite):
@@ -1067,10 +1021,6 @@ def push_message(
 
 @dataclass
 class SessionTicket:
-    """
-    A TLS session ticket for session resumption.
-    """
-
     age_add: int
     cipher_suite: CipherSuite
     not_valid_after: datetime.datetime
@@ -1112,7 +1062,6 @@ class Context:
             server_name: Optional[str] = None,
             verify_mode: Optional[int] = None,
     ):
-        # configuration
         self._alpn_protocols = alpn_protocols
         self._cadata = cadata
         self._cafile = cafile
@@ -1130,16 +1079,12 @@ class Context:
             self._verify_mode = verify_mode
         else:
             self._verify_mode = ssl.CERT_REQUIRED if is_client else ssl.CERT_NONE
-
-        # callbacks
         self.alpn_cb: Optional[AlpnHandler] = None
         self.get_session_ticket_cb: Optional[SessionTicketFetcher] = None
         self.new_session_ticket_cb: Optional[SessionTicketHandler] = None
         self.update_traffic_key_cb: Callable[
             [Direction, Epoch, CipherSuite, bytes], None
         ] = lambda d, e, c, s: None
-
-        # supported parameters
         if cipher_suites is not None:
             self._cipher_suites = cipher_suites
         else:
@@ -1198,9 +1143,6 @@ class Context:
 
     @property
     def session_resumed(self) -> bool:
-        """
-        Returns True if session resumption was successfully used.
-        """
         return self._session_resumed
 
     def handle_message(
@@ -1212,13 +1154,11 @@ class Context:
 
         self._receive_buffer += input_data
         while len(self._receive_buffer) >= 4:
-            # determine message length
             message_type = self._receive_buffer[0]
             message_length = 4 + int.from_bytes(
                 self._receive_buffer[1:4], byteorder="big"
             )
 
-            # check message is complete
             if len(self._receive_buffer) < message_length:
                 break
             message = self._receive_buffer[:message_length]
@@ -1226,7 +1166,6 @@ class Context:
 
             input_buf = Buffer(data=message)
 
-            # client states
 
             if self.state == State.CLIENT_EXPECT_SERVER_HELLO:
                 if message_type == HandshakeType.SERVER_HELLO:
@@ -1259,8 +1198,6 @@ class Context:
                     self._client_handle_new_session_ticket(input_buf)
                 else:
                     raise AlertUnexpectedMessage
-
-            # server states
 
             elif self.state == State.SERVER_EXPECT_CLIENT_HELLO:
                 if message_type == HandshakeType.CLIENT_HELLO:
@@ -1352,14 +1289,12 @@ class Context:
             other_extensions=self.handshake_extensions,
         )
 
-        # PSK
         if self.session_ticket and self.session_ticket.is_valid:
             self._key_schedule_psk = KeySchedule(self.session_ticket.cipher_suite)
             self._key_schedule_psk.extract(self.session_ticket.resumption_secret)
             binder_key = self._key_schedule_psk.derive_secret(b"res binder")
             binder_length = self._key_schedule_psk.algorithm.digest_size
 
-            # update hello
             if self.session_ticket.max_early_data_size is not None:
                 hello.early_data = True
             hello.pre_shared_key = OfferedPsks(
@@ -1369,11 +1304,9 @@ class Context:
                 binders=[bytes(binder_length)],
             )
 
-            # serialize hello without binder
             tmp_buf = Buffer(capacity=1024)
             push_client_hello(tmp_buf, hello)
 
-            # calculate binder
             hash_offset = tmp_buf.tell() - binder_length - 3
             self._key_schedule_psk.update_hash(tmp_buf.data_slice(0, hash_offset))
             binder = self._key_schedule_psk.finished_verify_data(binder_key)
@@ -1382,7 +1315,6 @@ class Context:
                 tmp_buf.data_slice(hash_offset, hash_offset + 3) + binder
             )
 
-            # calculate early data key
             if hello.early_data:
                 early_key = self._key_schedule_psk.derive_secret(b"c e traffic")
                 self.update_traffic_key_cb(
@@ -1411,7 +1343,6 @@ class Context:
         assert peer_hello.compression_method in self._legacy_compression_methods
         assert peer_hello.supported_version in self._supported_versions
 
-        # select key schedule
         if peer_hello.pre_shared_key is not None:
             if (
                     self._key_schedule_psk is None
@@ -1426,7 +1357,6 @@ class Context:
         self._key_schedule_psk = None
         self._key_schedule_proxy = None
 
-        # perform key exchange
         peer_public_key = decode_public_key(peer_hello.key_share)
         shared_key: Optional[bytes] = None
         if (
@@ -1527,13 +1457,11 @@ class Context:
     def _client_handle_finished(self, input_buf: Buffer, output_buf: Buffer) -> None:
         finished = pull_finished(input_buf)
 
-        # check verify data
         expected_verify_data = self.key_schedule.finished_verify_data(self._dec_key)
         if finished.verify_data != expected_verify_data:
             raise AlertDecryptError
         self.key_schedule.update_hash(input_buf.data)
 
-        # prepare traffic keys
         assert self.key_schedule.generation == 2
         self.key_schedule.extract(None)
         self._setup_traffic_protection(
@@ -1541,7 +1469,6 @@ class Context:
         )
         next_enc_key = self.key_schedule.derive_secret(b"c ap traffic")
 
-        # send finished
         with push_message(self.key_schedule, output_buf):
             push_finished(
                 output_buf,
@@ -1564,7 +1491,6 @@ class Context:
     def _client_handle_new_session_ticket(self, input_buf: Buffer) -> None:
         new_session_ticket = pull_new_session_ticket(input_buf)
 
-        # notify application
         if self.new_session_ticket_cb is not None:
             ticket = self._build_session_ticket(
                 new_session_ticket, self.received_extensions
@@ -1580,7 +1506,6 @@ class Context:
     ) -> None:
         peer_hello = pull_client_hello(input_buf)
 
-        # determine applicable signature algorithms
         signature_algorithms: List[SignatureAlgorithm] = []
         if isinstance(self.certificate_private_key, rsa.RSAPrivateKey):
             signature_algorithms = [
@@ -1597,7 +1522,6 @@ class Context:
         elif isinstance(self.certificate_private_key, ed448.Ed448PrivateKey):
             signature_algorithms = [SignatureAlgorithm.ED448]
 
-        # negotiate parameters
         cipher_suite = negotiate(
             self._cipher_suites,
             peer_hello.cipher_suites,
@@ -1622,7 +1546,6 @@ class Context:
             AlertProtocolVersion("No supported protocol version"),
         )
 
-        # negotiate ALPN
         if self._alpn_protocols is not None:
             self.alpn_negotiated = negotiate(
                 self._alpn_protocols,
@@ -1637,7 +1560,6 @@ class Context:
         self.legacy_session_id = peer_hello.legacy_session_id
         self.received_extensions = peer_hello.other_extensions
 
-        # select key schedule
         pre_shared_key = None
         if (
                 self.get_session_ticket_cb is not None
@@ -1646,11 +1568,9 @@ class Context:
                 and len(peer_hello.pre_shared_key.identities) == 1
                 and len(peer_hello.pre_shared_key.binders) == 1
         ):
-            # ask application to find session ticket
             identity = peer_hello.pre_shared_key.identities[0]
             session_ticket = self.get_session_ticket_cb(identity[0])
 
-            # validate session ticket
             if (
                     session_ticket is not None
                     and session_ticket.is_valid
@@ -1678,7 +1598,6 @@ class Context:
                 )
                 self._session_resumed = True
 
-                # calculate early data key
                 if peer_hello.early_data:
                     early_key = self.key_schedule.derive_secret(b"c e traffic")
                     self.early_data_accepted = True
@@ -1691,13 +1610,11 @@ class Context:
 
                 pre_shared_key = 0
 
-        # if PSK is not used, initialize key schedule
         if pre_shared_key is None:
             self.key_schedule = KeySchedule(cipher_suite)
             self.key_schedule.extract(None)
             self.key_schedule.update_hash(input_buf.data)
 
-        # perform key exchange
         public_key: Union[
             ec.EllipticCurvePublicKey, x25519.X25519PublicKey, x448.X448PublicKey
         ]
@@ -1723,7 +1640,6 @@ class Context:
                 break
         assert shared_key is not None
 
-        # send hello
         hello = ServerHello(
             random=self.server_random,
             legacy_session_id=self.legacy_session_id,
@@ -1744,7 +1660,6 @@ class Context:
             Direction.DECRYPT, Epoch.HANDSHAKE, b"c hs traffic"
         )
 
-        # send encrypted extensions
         with push_message(self.key_schedule, handshake_buf):
             push_encrypted_extensions(
                 handshake_buf,
@@ -1756,7 +1671,6 @@ class Context:
             )
 
         if pre_shared_key is None:
-            # send certificate
             with push_message(self.key_schedule, handshake_buf):
                 push_certificate(
                     handshake_buf,
@@ -1769,7 +1683,6 @@ class Context:
                     ),
                 )
 
-            # send certificate verify
             signature = self.certificate_private_key.sign(
                 self.key_schedule.certificate_verify_data(
                     b"TLS 1.3, server CertificateVerify"
@@ -1784,7 +1697,6 @@ class Context:
                     ),
                 )
 
-        # send finished
         with push_message(self.key_schedule, handshake_buf):
             push_finished(
                 handshake_buf,
@@ -1793,7 +1705,6 @@ class Context:
                 ),
             )
 
-        # prepare traffic keys
         assert self.key_schedule.generation == 2
         self.key_schedule.extract(None)
         self._setup_traffic_protection(
@@ -1801,7 +1712,6 @@ class Context:
         )
         self._next_dec_key = self.key_schedule.derive_secret(b"c ap traffic")
 
-        # anticipate client's FINISHED as we don't use client auth
         self._expected_verify_data = self.key_schedule.finished_verify_data(
             self._dec_key
         )
@@ -1809,7 +1719,6 @@ class Context:
         push_finished(buf, Finished(verify_data=self._expected_verify_data))
         self.key_schedule.update_hash(buf.data)
 
-        # create a new session ticket
         if self.new_session_ticket_cb is not None and psk_key_exchange_mode is not None:
             self._new_session_ticket = NewSessionTicket(
                 ticket_lifetime=86400,
@@ -1819,10 +1728,7 @@ class Context:
                 max_early_data_size=self._max_early_data,
             )
 
-            # send message
             push_new_session_ticket(onertt_buf, self._new_session_ticket)
-
-            # notify application
             ticket = self._build_session_ticket(
                 self._new_session_ticket, self.handshake_extensions
             )
@@ -1833,11 +1739,9 @@ class Context:
     def _server_handle_finished(self, input_buf: Buffer, output_buf: Buffer) -> None:
         finished = pull_finished(input_buf)
 
-        # check verify data
         if finished.verify_data != self._expected_verify_data:
             raise AlertDecryptError
 
-        # commit traffic key
         self._dec_key = self._next_dec_key
         self._next_dec_key = None
         self.update_traffic_key_cb(

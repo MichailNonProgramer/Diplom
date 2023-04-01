@@ -53,9 +53,6 @@ class QuicPacketBuilderStop(Exception):
 
 
 class QuicPacketBuilder:
-    """
-    Helper for building QUIC packets.
-    """
 
     def __init__(
         self,
@@ -81,7 +78,6 @@ class QuicPacketBuilder:
         self._spin_bit = spin_bit
         self._version = version
 
-        # assembled datagrams and packets
         self._datagrams: List[bytes] = []
         self._datagram_flight_bytes = 0
         self._datagram_init = True
@@ -89,7 +85,6 @@ class QuicPacketBuilder:
         self._flight_bytes = 0
         self._total_bytes = 0
 
-        # current packet
         self._header_size = 0
         self._packet: Optional[QuicSentPacket] = None
         self._packet_crypto: Optional[CryptoPair] = None
@@ -104,26 +99,16 @@ class QuicPacketBuilder:
 
     @property
     def packet_is_empty(self) -> bool:
-        """
-        Returns `True` if the current packet is empty.
-        """
         assert self._packet is not None
         packet_size = self._buffer.tell() - self._packet_start
         return packet_size <= self._header_size
 
     @property
     def packet_number(self) -> int:
-        """
-        Returns the packet number for the next packet.
-        """
         return self._packet_number
 
     @property
     def remaining_buffer_space(self) -> int:
-        """
-        Returns the remaining number of bytes which can be used in
-        the current packet.
-        """
         return (
             self._buffer_capacity
             - self._buffer.tell()
@@ -132,10 +117,6 @@ class QuicPacketBuilder:
 
     @property
     def remaining_flight_space(self) -> int:
-        """
-        Returns the remaining number of bytes which can be used in
-        the current packet.
-        """
         return (
             self._flight_capacity
             - self._buffer.tell()
@@ -143,9 +124,6 @@ class QuicPacketBuilder:
         )
 
     def flush(self) -> Tuple[List[bytes], List[QuicSentPacket]]:
-        """
-        Returns the assembled datagrams.
-        """
         if self._packet is not None:
             self._end_packet()
         self._flush_current_datagram()
@@ -163,9 +141,6 @@ class QuicPacketBuilder:
         handler: Optional[QuicDeliveryHandler] = None,
         handler_args: Sequence[Any] = [],
     ) -> Buffer:
-        """
-        Starts a new frame.
-        """
         if self.remaining_buffer_space < capacity or (
             frame_type not in NON_IN_FLIGHT_FRAME_TYPES
             and self.remaining_flight_space < capacity
@@ -184,23 +159,16 @@ class QuicPacketBuilder:
         return self._buffer
 
     def start_packet(self, packet_type: int, crypto: CryptoPair) -> None:
-        """
-        Starts a new packet.
-        """
         buf = self._buffer
 
-        # finish previous datagram
         if self._packet is not None:
             self._end_packet()
 
-        # if there is too little space remaining, start a new datagram
-        # FIXME: the limit is arbitrary!
         packet_start = buf.tell()
         if self._buffer_capacity - packet_start < 128:
             self._flush_current_datagram()
             packet_start = 0
 
-        # initialize datagram if needed
         if self._datagram_init:
             if self.max_total_bytes is not None:
                 remaining_total_bytes = self.max_total_bytes - self._total_bytes
@@ -225,11 +193,9 @@ class QuicPacketBuilder:
         else:
             header_size = 3 + len(self._peer_cid)
 
-        # check we have enough space
         if packet_start + header_size >= self._buffer_capacity:
             raise QuicPacketBuilderStop
 
-        # determine ack epoch
         if packet_type == PACKET_TYPE_INITIAL:
             epoch = Epoch.INITIAL
         elif packet_type == PACKET_TYPE_HANDSHAKE:
@@ -255,9 +221,6 @@ class QuicPacketBuilder:
         buf.seek(self._packet_start + self._header_size)
 
     def _end_packet(self) -> None:
-        """
-        Ends the current packet.
-        """
         buf = self._buffer
         packet_size = buf.tell() - self._packet_start
         if packet_size > self._header_size:
@@ -269,7 +232,6 @@ class QuicPacketBuilder:
                 - packet_size
             )
 
-            # padding for initial datagram
             if (
                 self._is_client
                 and self._packet_type == PACKET_TYPE_INITIAL
@@ -279,13 +241,11 @@ class QuicPacketBuilder:
             ):
                 padding_size = self.remaining_flight_space
 
-            # write padding
             if padding_size > 0:
                 buf.push_bytes(bytes(padding_size))
                 packet_size += padding_size
                 self._packet.in_flight = True
 
-                # log frame
                 if self._quic_logger is not None:
                     self._packet.quic_logger_frames.append(
                         self._quic_logger.encode_padding_frame()
@@ -338,13 +298,11 @@ class QuicPacketBuilder:
             if self._packet.in_flight:
                 self._datagram_flight_bytes += self._packet.sent_bytes
 
-            # short header packets cannot be coalesced, we need a new datagram
             if not self._packet_long_header:
                 self._flush_current_datagram()
 
             self._packet_number += 1
         else:
-            # "cancel" the packet
             buf.seek(self._packet_start)
 
         self._packet = None

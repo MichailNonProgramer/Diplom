@@ -73,10 +73,6 @@ class QuicHeader:
 
 
 def decode_packet_number(truncated: int, num_bits: int, expected: int) -> int:
-    """
-    Recover a packet number from a truncated packet number.
-    See: Appendix A - Sample Packet Number Decoding Algorithm
-    """
     window = 1 << num_bits
     half_window = window // 2
     candidate = (expected & ~(window - 1)) | truncated
@@ -91,10 +87,6 @@ def decode_packet_number(truncated: int, num_bits: int, expected: int) -> int:
 def get_retry_integrity_tag(
     packet_without_tag: bytes, original_destination_cid: bytes, version: int
 ) -> bytes:
-    """
-    Calculate the integrity tag for a RETRY packet.
-    """
-    # build Retry pseudo packet
     buf = Buffer(capacity=1 + len(original_destination_cid) + len(packet_without_tag))
     buf.push_uint8(len(original_destination_cid))
     buf.push_bytes(original_destination_cid)
@@ -108,7 +100,6 @@ def get_retry_integrity_tag(
         aead_key = RETRY_AEAD_KEY_VERSION_1
         aead_nonce = RETRY_AEAD_NONCE_VERSION_1
 
-    # run AES-128-GCM
     aead = AESGCM(aead_key)
     integrity_tag = aead.encrypt(aead_nonce, b"", buf.data)
     assert len(integrity_tag) == RETRY_INTEGRITY_TAG_SIZE
@@ -138,7 +129,6 @@ def pull_quic_header(buf: Buffer, host_cid_length: Optional[int] = None) -> Quic
     integrity_tag = b""
     token = b""
     if is_long_header(first_byte):
-        # long header packet
         version = buf.pull_uint32()
 
         destination_cid_length = buf.pull_uint8()
@@ -174,7 +164,6 @@ def pull_quic_header(buf: Buffer, host_cid_length: Optional[int] = None) -> Quic
             else:
                 rest_length = buf.pull_uint_var()
 
-            # check remainder length
             if rest_length > buf.capacity - buf.tell():
                 raise ValueError("Packet payload is truncated")
 

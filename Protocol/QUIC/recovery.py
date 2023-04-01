@@ -6,14 +6,12 @@ from .logger import QuicLoggerTrace
 from .packet_builder import QuicDeliveryState, QuicSentPacket
 from .rangeset import RangeSet
 
-# loss detection
 K_PACKET_THRESHOLD = 3
-K_GRANULARITY = 0.001  # seconds
+K_GRANULARITY = 0.001
 K_TIME_THRESHOLD = 9 / 8
 K_MICRO_SECOND = 0.000001
 K_SECOND = 1.0
 
-# congestion control
 K_MAX_DATAGRAM_SIZE = 1280
 K_INITIAL_WINDOW = 10 * K_MAX_DATAGRAM_SIZE
 K_MINIMUM_WINDOW = 2 * K_MAX_DATAGRAM_SIZE
@@ -29,7 +27,6 @@ class QuicPacketSpace:
         self.largest_received_packet = -1
         self.largest_received_time: Optional[float] = None
 
-        # sent packets and loss
         self.ack_eliciting_in_flight = 0
         self.largest_acked_packet = 0
         self.loss_time: Optional[float] = None
@@ -83,9 +80,6 @@ class QuicPacketPacer:
 
 
 class QuicCongestionControl:
-    """
-    New Reno congestion control.
-    """
 
     def __init__(self) -> None:
         self.bytes_in_flight = 0
@@ -97,16 +91,12 @@ class QuicCongestionControl:
 
     def on_packet_acked(self, packet: QuicSentPacket) -> None:
         self.bytes_in_flight -= packet.sent_bytes
-
-        # don't increase window in congestion recovery
         if packet.sent_time <= self._congestion_recovery_start_time:
             return
 
         if self.ssthresh is None or self.congestion_window < self.ssthresh:
-            # slow start
             self.congestion_window += packet.sent_bytes
         else:
-            # congestion avoidance
             self._congestion_stash += packet.sent_bytes
             count = self._congestion_stash // self.congestion_window
             if count:
@@ -126,8 +116,6 @@ class QuicCongestionControl:
             self.bytes_in_flight -= packet.sent_bytes
             lost_largest_time = packet.sent_time
 
-        # start a new congestion event if packet was sent after the
-        # start of the previous congestion recovery period.
         if lost_largest_time > self._congestion_recovery_start_time:
             self._congestion_recovery_start_time = now
             self.congestion_window = max(
@@ -135,10 +123,8 @@ class QuicCongestionControl:
             )
             self.ssthresh = self.congestion_window
 
-        # TODO : collapse congestion window if persistent congestion
 
     def on_rtt_measurement(self, latest_rtt: float, now: float) -> None:
-        # check whether we should exit slow start
         if self.ssthresh is None and self._rtt_monitor.is_rtt_increasing(
             latest_rtt, now
         ):
@@ -146,9 +132,6 @@ class QuicCongestionControl:
 
 
 class QuicPacketRecovery:
-    """
-    Packet loss and congestion controller.
-    """
 
     def __init__(
         self,
@@ -162,12 +145,10 @@ class QuicPacketRecovery:
         self.peer_completed_address_validation = peer_completed_address_validation
         self.spaces: List[QuicPacketSpace] = []
 
-        # callbacks
         self._logger = logger
         self._quic_logger = quic_logger
         self._send_probe = send_probe
 
-        # loss detection
         self._pto_count = 0
         self._rtt_initial = initial_rtt
         self._rtt_initialized = False
@@ -177,7 +158,6 @@ class QuicPacketRecovery:
         self._rtt_variance = 0.0
         self._time_of_last_sent_ack_eliciting_packet = 0.0
 
-        # congestion control
         self._cc = QuicCongestionControl()
         self._pacer = QuicPacketPacer()
 
@@ -201,19 +181,16 @@ class QuicPacketRecovery:
         space.ack_eliciting_in_flight = 0
         space.loss_time = None
 
-        # reset PTO count
         self._pto_count = 0
 
         if self._quic_logger is not None:
             self._log_metrics_updated()
 
     def get_loss_detection_time(self) -> float:
-        # loss timer
         loss_space = self._get_loss_space()
         if loss_space is not None:
             return loss_space.loss_time
 
-        # packet timer
         if (
             not self.peer_completed_address_validation
             or sum(space.ack_eliciting_in_flight for space in self.spaces) > 0
@@ -239,9 +216,6 @@ class QuicPacketRecovery:
         ack_delay: float,
         now: float,
     ) -> None:
-        """
-        Update metrics as the result of an ACK being received.
-        """
         is_ack_eliciting = False
         largest_acked = ack_rangeset.bounds().stop - 1
         largest_newly_acked = None
@@ -264,11 +238,9 @@ class QuicPacketRecovery:
                 largest_newly_acked = packet_number
                 largest_sent_time = packet.sent_time
 
-                # trigger callbacks
                 for handler, args in packet.delivery_handlers:
                     handler(QuicDeliveryState.ACKED, *args)
 
-        # nothing to do if there are no newly acked packets
         if largest_newly_acked is None:
             return
 
@@ -276,10 +248,8 @@ class QuicPacketRecovery:
             latest_rtt = now - largest_sent_time
             log_rtt = True
 
-            # limit ACK delay to max_ack_delay
             ack_delay = min(ack_delay, self.max_ack_delay)
 
-            # update RTT estimate, which cannot be < 1 ms
             self._rtt_latest = max(latest_rtt, 0.001)
             if self._rtt_latest < self._rtt_min:
                 self._rtt_min = self._rtt_latest
@@ -298,7 +268,6 @@ class QuicPacketRecovery:
                     7 / 8 * self._rtt_smoothed + 1 / 8 * self._rtt_latest
                 )
 
-            # inform congestion controller
             self._cc.on_rtt_measurement(latest_rtt, now=now)
             self._pacer.update_rate(
                 congestion_window=self._cc.congestion_window,
@@ -310,7 +279,6 @@ class QuicPacketRecovery:
 
         self._detect_loss(space, now=now)
 
-        # reset PTO count
         self._pto_count = 0
 
         if self._quic_logger is not None:
@@ -340,10 +308,6 @@ class QuicPacketRecovery:
                 self._log_metrics_updated()
 
     def reschedule_data(self, now: float) -> None:
-        """
-        Schedule some data for retransmission.
-        """
-        # if there is any outstanding CRYPTO, retransmit it
         crypto_scheduled = False
         for space in self.spaces:
             packets = tuple(
@@ -355,13 +319,9 @@ class QuicPacketRecovery:
         if crypto_scheduled and self._logger is not None:
             self._logger.debug("Scheduled CRYPTO data for retransmission")
 
-        # ensure an ACK-elliciting packet is sent
         self._send_probe()
 
     def _detect_loss(self, space: QuicPacketSpace, now: float) -> None:
-        """
-        Check whether any packets should be declared lost.
-        """
         loss_delay = K_TIME_THRESHOLD * (
             max(self._rtt_latest, self._rtt_smoothed)
             if self._rtt_initialized
@@ -440,11 +400,9 @@ class QuicPacketRecovery:
                 )
                 self._log_metrics_updated()
 
-            # trigger callbacks
             for handler, args in packet.delivery_handlers:
                 handler(QuicDeliveryState.LOST, *args)
 
-        # inform congestion controller
         if lost_packets_cc:
             self._cc.on_packets_lost(lost_packets_cc, now=now)
             self._pacer.update_rate(
@@ -456,10 +414,6 @@ class QuicPacketRecovery:
 
 
 class QuicRttMonitor:
-    """
-    Roundtrip time monitor for HyStart.
-    """
-
     def __init__(self) -> None:
         self._increases = 0
         self._last_time = None

@@ -5,8 +5,8 @@ from typing import Dict, FrozenSet, List, Optional, Set
 
 import pylsqpack
 
-from aioquic.buffer import UINT_VAR_MAX_SIZE, Buffer, BufferReadError, encode_uint_var
-from aioquic.h3.events import (
+from Protocol.buffer import UINT_VAR_MAX_SIZE, Buffer, BufferReadError, encode_uint_var
+from Protocol.HTTP3.events import (
     DatagramReceived,
     DataReceived,
     H3Event,
@@ -15,10 +15,10 @@ from aioquic.h3.events import (
     PushPromiseReceived,
     WebTransportStreamDataReceived,
 )
-from aioquic.h3.exceptions import NoAvailablePushIDError
-from aioquic.quic.connection import QuicConnection, stream_is_unidirectional
-from aioquic.quic.events import DatagramFrameReceived, QuicEvent, StreamDataReceived
-from aioquic.quic.logger import QuicLoggerTrace
+from Protocol.HTTP3.exeptions import NoAvailablePushIDError
+from Protocol.QUIC.connection import QuicConnection, stream_is_unidirectional
+from Protocol.QUIC.events import DatagramFrameReceived, QuicEvent, StreamDataReceived
+from Protocol.QUIC.logger import QuicLoggerTrace
 
 logger = logging.getLogger("http3")
 
@@ -73,16 +73,9 @@ class Setting(IntEnum):
     QPACK_MAX_TABLE_CAPACITY = 0x1
     MAX_FIELD_SECTION_SIZE = 0x6
     QPACK_BLOCKED_STREAMS = 0x7
-
-    # https://datatracker.ietf.org/doc/html/rfc9220#section-5
     ENABLE_CONNECT_PROTOCOL = 0x8
-    # https://datatracker.ietf.org/doc/html/draft-ietf-masque-h3-datagram-05#section-9.1
     H3_DATAGRAM = 0xFFD277
-    # https://datatracker.ietf.org/doc/html/draft-ietf-webtrans-http2-02#section-10.1
     ENABLE_WEBTRANSPORT = 0x2B603742
-
-    # Dummy setting to check it is correctly ignored by the peer.
-    # https://datatracker.ietf.org/doc/html/rfc9114#section-7.2.4.1
     DUMMY = 0x21
 
 
@@ -95,11 +88,6 @@ class StreamType(IntEnum):
 
 
 class ProtocolError(Exception):
-    """
-    Base class for protocol errors.
-    These errors are not exposed to the API user, they are handled
-    in :meth:`H3Connection.handle_event`.
-    """
 
     error_code = ErrorCode.H3_GENERAL_PROTOCOL_ERROR
 
@@ -331,11 +319,7 @@ class H3Connection:
     def create_webtransport_stream(
         self, session_id: int, is_unidirectional: bool = False
     ) -> int:
-        """
-        Create a WebTransport stream and return the stream ID.
-        :param session_id: The WebTransport session identifier.
-        :param is_unidirectional: Whether to create a unidirectional stream.
-        """
+
         if is_unidirectional:
             stream_id = self._create_uni_stream(StreamType.WEBTRANSPORT)
             self._quic.send_stream_data(stream_id, encode_uint_var(session_id))
@@ -352,10 +336,6 @@ class H3Connection:
         return stream_id
 
     def handle_event(self, event: QuicEvent) -> List[H3Event]:
-        """
-        Handle a QUIC event and return a list of HTTP events.
-        :param event: The QUIC event to handle.
-        """
 
         if not self._is_done:
             try:
@@ -381,20 +361,9 @@ class H3Connection:
         return []
 
     def send_datagram(self, flow_id: int, data: bytes) -> None:
-        """
-        Send a datagram for the specified flow.
-        :param flow_id: The flow ID.
-        :param data: The HTTP/3 datagram payload.
-        """
         self._quic.send_datagram_frame(encode_uint_var(flow_id) + data)
 
     def send_push_promise(self, stream_id: int, headers: Headers) -> int:
-        """
-        Send a push promise related to the specified stream.
-        Returns the stream ID on which headers and data can be sent.
-        :param stream_id: The stream ID on which to send the data.
-        :param headers: The HTTP request headers for this push.
-        """
         assert not self._is_client, "Only servers may send a push promise."
         if self._max_push_id is None or self._next_push_id >= self._max_push_id:
             raise NoAvailablePushIDError
@@ -417,16 +386,6 @@ class H3Connection:
         return push_stream_id
 
     def send_data(self, stream_id: int, data: bytes, end_stream: bool) -> None:
-        """
-        Send data on the given stream.
-        To retrieve datagram which need to be sent over the network call the QUIC
-        connection's :meth:`~aioquic.connection.QuicConnection.datagrams_to_send`
-        method.
-        :param stream_id: The stream ID on which to send the data.
-        :param data: The data to send.
-        :param end_stream: Whether to end the stream.
-        """
-        # check DATA frame is allowed
         stream = self._get_or_create_stream(stream_id)
         if stream.headers_send_state != HeadersState.AFTER_HEADERS:
             raise FrameUnexpected("DATA frame is not allowed in this state")
@@ -448,16 +407,6 @@ class H3Connection:
     def send_headers(
         self, stream_id: int, headers: Headers, end_stream: bool = False
     ) -> None:
-        """
-        Send headers on the given stream.
-        To retrieve datagram which need to be sent over the network call the QUIC
-        connection's :meth:`~aioquic.connection.QuicConnection.datagrams_to_send`
-        method.
-        :param stream_id: The stream ID on which to send the headers.
-        :param headers: The HTTP headers to send.
-        :param end_stream: Whether to end the stream.
-        """
-        # check HEADERS frame is allowed
         stream = self._get_or_create_stream(stream_id)
         if stream.headers_send_state == HeadersState.AFTER_TRAILERS:
             raise FrameUnexpected("HEADERS frame is not allowed in this state")
@@ -474,7 +423,6 @@ class H3Connection:
                 ),
             )
 
-        # update state and send headers
         if stream.headers_send_state == HeadersState.INITIAL:
             stream.headers_send_state = HeadersState.AFTER_HEADERS
         else:
@@ -485,24 +433,15 @@ class H3Connection:
 
     @property
     def received_settings(self) -> Optional[Dict[int, int]]:
-        """
-        Return the received SETTINGS frame, or None.
-        """
         return self._received_settings
 
     @property
     def sent_settings(self) -> Optional[Dict[int, int]]:
-        """
-        Return the sent SETTINGS frame, or None.
-        """
         return self._sent_settings
 
     def _create_uni_stream(
         self, stream_type: int, push_id: Optional[int] = None
     ) -> int:
-        """
-        Create an unidirectional stream of the given type.
-        """
         stream_id = self._quic.get_next_available_stream_id(is_unidirectional=True)
         self._log_stream_type(
             push_id=push_id, stream_id=stream_id, stream_type=stream_type
@@ -511,10 +450,6 @@ class H3Connection:
         return stream_id
 
     def _decode_headers(self, stream_id: int, frame_data: Optional[bytes]) -> Headers:
-        """
-        Decode a HEADERS block and send decoder updates on the decoder stream.
-        This is called with frame_data=None when a stream becomes unblocked.
-        """
         try:
             if frame_data is None:
                 decoder, headers = self._decoder.resume_header(stream_id)
@@ -528,9 +463,6 @@ class H3Connection:
         return headers
 
     def _encode_headers(self, stream_id: int, headers: Headers) -> bytes:
-        """
-        Encode a HEADERS block and send encoder updates on the encoder stream.
-        """
         encoder, frame_data = self._encoder.encode(stream_id, headers)
         self._encoder_bytes_sent += len(encoder)
         self._quic.send_stream_data(self._local_encoder_stream_id, encoder)
@@ -542,9 +474,6 @@ class H3Connection:
         return self._stream[stream_id]
 
     def _get_local_settings(self) -> Dict[int, int]:
-        """
-        Return the local HTTP/3 settings.
-        """
         settings: Dict[int, int] = {
             Setting.QPACK_MAX_TABLE_CAPACITY: self._max_table_capacity,
             Setting.QPACK_BLOCKED_STREAMS: self._blocked_streams,
@@ -557,9 +486,6 @@ class H3Connection:
         return settings
 
     def _handle_control_frame(self, frame_type: int, frame_data: bytes) -> None:
-        """
-        Handle a frame received on the peer's control stream.
-        """
         if frame_type != FrameType.SETTINGS and not self._settings_received:
             raise MissingSettingsError
 
@@ -594,9 +520,6 @@ class H3Connection:
         stream: H3Stream,
         stream_ended: bool,
     ) -> List[H3Event]:
-        """
-        Handle a frame received on a request or push stream.
-        """
         http_events: List[H3Event] = []
 
         if frame_type == FrameType.DATA:
@@ -750,9 +673,6 @@ class H3Connection:
             )
 
     def _receive_datagram(self, data: bytes) -> List[H3Event]:
-        """
-        Handle a datagram.
-        """
         buf = Buffer(data=data)
         try:
             flow_id = buf.pull_uint_var()
@@ -763,9 +683,6 @@ class H3Connection:
     def _receive_request_or_push_data(
         self, stream: H3Stream, data: bytes, stream_ended: bool
     ) -> List[H3Event]:
-        """
-        Handle data received on a request or push stream.
-        """
         http_events: List[H3Event] = []
 
         stream.buffer += data
@@ -790,7 +707,6 @@ class H3Connection:
             stream.buffer = b""
             return http_events
 
-        # shortcut for DATA frame fragments
         if (
             stream.frame_type == FrameType.DATA
             and stream.frame_size is not None
@@ -824,7 +740,6 @@ class H3Connection:
         consumed = 0
 
         while not buf.eof():
-            # fetch next frame header
             if stream.frame_size is None:
                 try:
                     stream.frame_type = buf.pull_uint_var()
@@ -833,7 +748,7 @@ class H3Connection:
                     break
                 consumed = buf.tell()
 
-                # WEBTRANSPORT_STREAM frames last until the end of the stream
+
                 if stream.frame_type == FrameType.WEBTRANSPORT_STREAM:
                     stream.session_id = stream.frame_size
                     stream.frame_size = None
@@ -869,17 +784,15 @@ class H3Connection:
                         ),
                     )
 
-            # check how much data is available
             chunk_size = min(stream.frame_size, buf.capacity - consumed)
             if stream.frame_type != FrameType.DATA and chunk_size < stream.frame_size:
                 break
 
-            # read available data
             frame_data = buf.pull_bytes(chunk_size)
             frame_type = stream.frame_type
             consumed = buf.tell()
 
-            # detect end of frame
+
             stream.frame_size -= chunk_size
             if not stream.frame_size:
                 stream.frame_size = None
@@ -899,7 +812,6 @@ class H3Connection:
                 stream.blocked_frame_size = len(frame_data)
                 break
 
-        # remove processed data from buffer
         stream.buffer = stream.buffer[consumed:]
 
         return http_events
@@ -969,7 +881,7 @@ class H3Connection:
 
                 self._handle_control_frame(frame_type, frame_data)
             elif stream.stream_type == StreamType.PUSH:
-                # fetch push id
+
                 if stream.push_id is None:
                     try:
                         stream.push_id = buf.pull_uint_var()
@@ -983,7 +895,6 @@ class H3Connection:
                         stream_type=stream.stream_type,
                     )
 
-                # remove processed data from buffer
                 stream.buffer = stream.buffer[consumed:]
 
                 return self._receive_request_or_push_data(stream, b"", stream_ended)
@@ -1010,7 +921,7 @@ class H3Connection:
                     )
                 return http_events
             elif stream.stream_type == StreamType.QPACK_DECODER:
-                # feed unframed data to decoder
+
                 data = buf.pull_bytes(buf.capacity - buf.tell())
                 consumed = buf.tell()
                 try:
@@ -1019,7 +930,6 @@ class H3Connection:
                     raise QpackDecoderStreamError() from exc
                 self._decoder_bytes_received += len(data)
             elif stream.stream_type == StreamType.QPACK_ENCODER:
-                # feed unframed data to encoder
                 data = buf.pull_bytes(buf.capacity - buf.tell())
                 consumed = buf.tell()
                 try:
@@ -1028,18 +938,14 @@ class H3Connection:
                     raise QpackEncoderStreamError() from exc
                 self._encoder_bytes_received += len(data)
             else:
-                # unknown stream type, discard data
                 buf.seek(buf.capacity)
                 consumed = buf.tell()
 
-        # remove processed data from buffer
         stream.buffer = stream.buffer[consumed:]
 
-        # process unblocked streams
         for stream_id in unblocked_streams:
             stream = self._stream[stream_id]
 
-            # resume headers
             http_events.extend(
                 self._handle_request_or_push_frame(
                     frame_type=FrameType.HEADERS,

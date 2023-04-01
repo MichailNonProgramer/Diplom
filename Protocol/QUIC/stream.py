@@ -20,14 +20,6 @@ class StreamFinishedError(Exception):
 
 
 class QuicStreamReceiver:
-    """
-    The receive part of a QUIC stream.
-    It finishes:
-    - immediately for a send-only stream
-    - upon reception of a STREAM_RESET frame
-    - upon reception of a data frame with the FIN bit set
-    """
-
     def __init__(self, stream_id: Optional[int], readable: bool) -> None:
         self.highest_offset = 0  # the highest offset ever seen
         self.is_finished = False
@@ -50,14 +42,10 @@ class QuicStreamReceiver:
     def handle_frame(
         self, frame: QuicStreamFrame
     ) -> Optional[events.StreamDataReceived]:
-        """
-        Handle a frame of received data.
-        """
         pos = frame.offset - self._buffer_start
         count = len(frame.data)
         frame_end = frame.offset + count
 
-        # we should receive no more data beyond FIN!
         if self._final_size is not None:
             if frame_end > self._final_size:
                 raise FinalSizeError("Data received beyond final size")
@@ -68,28 +56,23 @@ class QuicStreamReceiver:
         if frame_end > self.highest_offset:
             self.highest_offset = frame_end
 
-        # fast path: new in-order chunk
         if pos == 0 and count and not self._buffer:
             self._buffer_start += count
             if frame.fin:
-                # all data up to the FIN has been received, we're done receiving
                 self.is_finished = True
             return events.StreamDataReceived(
                 data=frame.data, end_stream=frame.fin, stream_id=self._stream_id
             )
 
-        # discard duplicate data
         if pos < 0:
             frame.data = frame.data[-pos:]
             frame.offset -= pos
             pos = 0
             count = len(frame.data)
 
-        # marked received range
         if frame_end > frame.offset:
             self._ranges.add(frame.offset, frame_end)
 
-        # add new data
         gap = pos - len(self._buffer)
         if gap > 0:
             self._buffer += bytearray(gap)
@@ -111,35 +94,22 @@ class QuicStreamReceiver:
     def handle_reset(
         self, *, final_size: int, error_code: int = QuicErrorCode.NO_ERROR
     ) -> Optional[events.StreamReset]:
-        """
-        Handle an abrupt termination of the receiving part of the QUIC stream.
-        """
         if self._final_size is not None and final_size != self._final_size:
             raise FinalSizeError("Cannot change final size")
 
-        # we are done receiving
         self._final_size = final_size
         self.is_finished = True
         return events.StreamReset(error_code=error_code, stream_id=self._stream_id)
 
     def on_stop_sending_delivery(self, delivery: QuicDeliveryState) -> None:
-        """
-        Callback when a STOP_SENDING is ACK'd.
-        """
         if delivery != QuicDeliveryState.ACKED:
             self.stop_pending = True
 
     def stop(self, error_code: int = QuicErrorCode.NO_ERROR) -> None:
-        """
-        Request the peer stop sending data on the QUIC stream.
-        """
         self._stop_error_code = error_code
         self.stop_pending = True
 
     def _pull_data(self) -> bytes:
-        """
-        Remove data from the front of the buffer.
-        """
         try:
             has_data_to_read = self._ranges[0].start == self._buffer_start
         except IndexError:
@@ -156,13 +126,6 @@ class QuicStreamReceiver:
 
 
 class QuicStreamSender:
-    """
-    The send part of a QUIC stream.
-    It finishes:
-    - immediately for a receive-only stream
-    - upon acknowledgement of a STREAM_RESET frame
-    - upon acknowledgement of a data frame with the FIN bit set
-    """
 
     def __init__(self, stream_id: Optional[int], writable: bool) -> None:
         self.buffer_is_empty = True
@@ -182,10 +145,6 @@ class QuicStreamSender:
 
     @property
     def next_offset(self) -> int:
-        """
-        The offset for the next frame to send.
-        This is used to determine the space needed for the frame's `offset` field.
-        """
         try:
             return self._pending[0].start
         except IndexError:
@@ -194,10 +153,6 @@ class QuicStreamSender:
     def get_frame(
         self, max_size: int, max_offset: Optional[int] = None
     ) -> Optional[QuicStreamFrame]:
-        """
-        Get a frame of data to send.
-        """
-        # get the first pending data range
         try:
             r = self._pending[0]
         except IndexError:
@@ -209,7 +164,6 @@ class QuicStreamSender:
             self.buffer_is_empty = True
             return None
 
-        # apply flow control
         start = r.start
         stop = min(r.stop, start + max_size)
         if max_offset is not None and stop > max_offset:
@@ -217,7 +171,6 @@ class QuicStreamSender:
         if stop <= start:
             return None
 
-        # create frame
         frame = QuicStreamFrame(
             data=bytes(
                 self._buffer[start - self._buffer_start : stop - self._buffer_start]
@@ -226,11 +179,9 @@ class QuicStreamSender:
         )
         self._pending.subtract(start, stop)
 
-        # track the highest offset ever sent
         if stop > self.highest_offset:
             self.highest_offset = stop
 
-        # if the buffer is empty and EOF was written, set the FIN bit
         if self._buffer_fin == stop:
             frame.fin = True
             self._pending_eof = False
@@ -248,9 +199,6 @@ class QuicStreamSender:
     def on_data_delivery(
         self, delivery: QuicDeliveryState, start: int, stop: int
     ) -> None:
-        """
-        Callback when sent data is ACK'd.
-        """
         self.buffer_is_empty = False
         if delivery == QuicDeliveryState.ACKED:
             if stop > start:
@@ -273,9 +221,6 @@ class QuicStreamSender:
                 self._pending_eof = True
 
     def on_reset_delivery(self, delivery: QuicDeliveryState) -> None:
-        """
-        Callback when a reset is ACK'd.
-        """
         if delivery == QuicDeliveryState.ACKED:
             # the reset has been ACK'd, we're done sending
             self.is_finished = True
@@ -283,17 +228,11 @@ class QuicStreamSender:
             self.reset_pending = True
 
     def reset(self, error_code: int) -> None:
-        """
-        Abruptly terminate the sending part of the QUIC stream.
-        """
         assert self._reset_error_code is None, "cannot call reset() more than once"
         self._reset_error_code = error_code
         self.reset_pending = True
 
     def write(self, data: bytes, end_stream: bool = False) -> None:
-        """
-        Write some data bytes to the QUIC stream.
-        """
         assert self._buffer_fin is None, "cannot call write() after FIN"
         assert self._reset_error_code is None, "cannot call write() after reset()"
         size = len(data)

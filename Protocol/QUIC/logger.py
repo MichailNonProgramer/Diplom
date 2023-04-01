@@ -34,14 +34,6 @@ def hexdump(data: bytes) -> str:
 
 
 class QuicLoggerTrace:
-    """
-    A QUIC event trace.
-    Events are logged in the format defined by qlog.
-    See:
-    - https://datatracker.ietf.org/doc/html/draft-ietf-quic-qlog-main-schema-02
-    - https://datatracker.ietf.org/doc/html/draft-marx-quic-qlog-quic-events
-    - https://datatracker.ietf.org/doc/html/draft-marx-quic-qlog-h3-events
-    """
 
     def __init__(self, *, is_client: bool, odcid: bytes) -> None:
         self._odcid = odcid
@@ -192,9 +184,6 @@ class QuicLoggerTrace:
         }
 
     def encode_time(self, seconds: float) -> float:
-        """
-        Convert a time to milliseconds.
-        """
         return seconds * 1000
 
     def encode_transport_parameters(
@@ -304,10 +293,6 @@ class QuicLogger:
 
 
 class QuicFileLogger(QuicLogger):
-    """
-    A QUIC event logger which writes one trace per file.
-    """
-
     def __init__(self, path: str) -> None:
         if not os.path.isdir(path):
             raise ValueError("QUIC log output directory '%s' does not exist" % path)

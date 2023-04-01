@@ -5,19 +5,12 @@ UINT_VAR_MAX_SIZE = 8
 
 
 def encode_uint_var(value: int) -> bytes:
-    """
-    Encode a variable-length unsigned integer.
-    """
     buf = Buffer(capacity=UINT_VAR_MAX_SIZE)
     buf.push_uint_var(value)
     return buf.data
 
 
 def size_uint_var(value: int) -> int:
-    """
-    Return the number of bytes required to encode the given value
-    as a QUIC variable-length unsigned integer.
-    """
     if value <= 0x3F:
         return 1
     elif value <= 0x3FFF:

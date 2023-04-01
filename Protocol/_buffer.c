@@ -3,7 +3,7 @@
 #include <Python.h>
 #include <stdint.h>
 
-#define MODULE_NAME "aioquic._buffer"
+#define MODULE_NAME "quic._buffer"
 
 static PyObject *BufferReadError;
 static PyObject *BufferWriteError;

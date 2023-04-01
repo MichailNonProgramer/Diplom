@@ -15,62 +15,26 @@ from .packet import QuicProtocolVersion
 
 @dataclass
 class QuicConfiguration:
-    """
-    A QUIC configuration.
-    """
 
     alpn_protocols: Optional[List[str]] = None
-    """
-    A list of supported ALPN protocols.
-    """
 
     connection_id_length: int = 8
-    """
-    The length in bytes of local connection IDs.
-    """
 
     idle_timeout: float = 60.0
-    """
-    The idle timeout in seconds.
-    The connection is terminated if nothing is received for the given duration.
-    """
 
     is_client: bool = True
-    """
-    Whether this is the client side of the QUIC connection.
-    """
 
     max_data: int = 1048576
-    """
-    Connection-wide flow control limit.
-    """
 
     max_stream_data: int = 1048576
-    """
-    Per-stream flow control limit.
-    """
 
     quic_logger: Optional[QuicLogger] = None
-    """
-    The :class:`~aioquic.quic.logger.QuicLogger` instance to log events to.
-    """
 
     secrets_log_file: TextIO = None
-    """
-    A file-like object in which to log traffic secrets.
-    This is useful to analyze traffic captures with Wireshark.
-    """
 
     server_name: Optional[str] = None
-    """
-    The server name to send during the TLS handshake the Server Name Indication.
-    .. note:: This is only used by clients.
-    """
 
     session_ticket: Optional[SessionTicket] = None
-    """
-    The TLS session ticket which should be used for session resumption.
-    """
 
     cadata: Optional[bytes] = None
     cafile: Optional[str] = None
@@ -99,9 +63,6 @@ class QuicConfiguration:
         keyfile: Optional[PathLike] = None,
         password: Optional[Union[bytes, str]] = None,
     ) -> None:
-        """
-        Load a private key and the corresponding certificate.
-        """
         with open(certfile, "rb") as fp:
             boundary = b"-----BEGIN PRIVATE KEY-----\n"
             chunks = split(b"\n" + boundary, fp.read())
@@ -127,10 +88,6 @@ class QuicConfiguration:
         capath: Optional[str] = None,
         cadata: Optional[bytes] = None,
     ) -> None:
-        """
-        Load a set of "certification authority" (CA) certificates used to
-        validate other peers' certificates.
-        """
         self.cafile = cafile
         self.capath = capath
         self.cadata = cadata
