@@ -15,6 +15,7 @@
     <option name="namespacePackageFolders">
       <list>
         <option value="$MODULE_DIR$/Protocol" />
+        <option value="$MODULE_DIR$/Client" />
       </list>
     </option>
   </component>

@@ -5,7 +5,7 @@ import time
 from collections import deque
 from typing import Any, Deque, Dict, List, Optional
 
-from ..h3.events import Headers
+from ..HTTP3.events import Headers
 from .packet import (
     PACKET_TYPE_HANDSHAKE,
     PACKET_TYPE_INITIAL,
@@ -39,7 +39,7 @@ class QuicLoggerTrace:
         self._odcid = odcid
         self._events: Deque[Dict[str, Any]] = deque()
         self._vantage_point = {
-            "name": "aioquic",
+            "name": "quic",
             "type": "client" if is_client else "server",
         }
 

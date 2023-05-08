@@ -1,8 +1,13 @@
 import binascii
 from typing import Callable, Optional, Tuple
+import sys
+import os
 
-from .._crypto import AEAD, CryptoError, HeaderProtection
-from ..tls import CipherSuite, cipher_suite_hash, hkdf_expand_label, hkdf_extract
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+sys.path.append(os.path.dirname(SCRIPT_DIR))
+
+from Protocol._crypto import AEAD, CryptoError, HeaderProtection
+from Protocol.tls import CipherSuite, cipher_suite_hash, hkdf_expand_label, hkdf_extract
 from packet import decode_packet_number, is_draft_version, is_long_header
 
 CIPHER_SUITES = {
@@ -126,7 +131,6 @@ def apply_key_phase(self: CryptoContext, crypto: CryptoContext, trigger: str) ->
     self.aead = crypto.aead
     self.key_phase = crypto.key_phase
     self.secret = crypto.secret
-
 
     self._setup_cb(trigger)
 

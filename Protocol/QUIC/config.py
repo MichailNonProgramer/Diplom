@@ -2,6 +2,11 @@ from dataclasses import dataclass, field
 from os import PathLike
 from re import split
 from typing import Any, List, Optional, TextIO, Union
+import sys
+import os
+
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+sys.path.append(os.path.dirname(SCRIPT_DIR))
 
 from ..tls import (
     CipherSuite,

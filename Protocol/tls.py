@@ -37,6 +37,11 @@ from cryptography.hazmat.primitives.asymmetric import (
 )
 from cryptography.hazmat.primitives.kdf.hkdf import HKDFExpand
 from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
+import sys
+import os
+
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+sys.path.append(os.path.dirname(SCRIPT_DIR))
 
 from Protocol.QUIC import crypto
 from Protocol.buffer import Buffer

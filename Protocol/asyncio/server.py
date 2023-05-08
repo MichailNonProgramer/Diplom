@@ -3,7 +3,7 @@ import os
 from functools import partial
 from typing import Callable, Dict, Optional, Text, Union, cast
 
-from ..buffer import Buffer
+from Protocol.buffer import Buffer
 from ..QUIC.config import QuicConfiguration
 from ..QUIC.connection import NetworkAddress, QuicConnection
 from ..QUIC.packet import (

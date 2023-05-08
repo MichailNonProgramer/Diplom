@@ -3,6 +3,11 @@ import ipaddress
 import socket
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator, Callable, Optional, cast
+import sys
+import os
+
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+sys.path.append(os.path.dirname(SCRIPT_DIR))
 
 from ..QUIC.config import QuicConfiguration
 from ..QUIC.connection import QuicConnection
