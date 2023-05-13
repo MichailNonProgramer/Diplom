@@ -30,6 +30,7 @@ async def download_file(connector, filename):
         f.write(f'{date_time} - Download took {duration:.3f} seconds\n')
 
 
+
 if __name__ == '__main__':
     ssl_context = ssl.SSLContext(ssl.PROTOCOL_SSLv23)
     ssl_context.set_ciphers('ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:DHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:DHE-RSA-CHACHA20-POLY1305')
@@ -39,7 +40,12 @@ if __name__ == '__main__':
     loop = asyncio.get_event_loop()
     connector = aiohttp.TCPConnector(ssl=ssl_context)
 
-    NUM_OF_REQUESTS = 100
-    filenames = [f'bigfile_downloaded_{i}.txt' for i in range(NUM_OF_REQUESTS)]
+    NUM_OF_REQUESTS = 10
+    current_dir = os.getcwd()
+    folder_name = 'save'
+    new_dir = os.path.join(current_dir, folder_name)
+    if not os.path.exists(new_dir):
+        os.makedirs(new_dir)
+    filenames = [os.path.join(new_dir, f'bigfile_downloaded_{i}.txt') for i in range(NUM_OF_REQUESTS)]
     tasks = [loop.create_task(download_file(connector, filename)) for filename in filenames]
     loop.run_until_complete(asyncio.wait(tasks))
