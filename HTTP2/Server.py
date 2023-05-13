@@ -1,62 +1,29 @@
-import json
-import socket
+import asyncio
+import random
+import ssl
+from aiohttp import web
 
-import h2.connection
-import h2.events
-import h2.config
+async def download_file(request):
+    filename = 'text.txt'
+    response = web.FileResponse(filename)
+    return response
 
+ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS)
+ssl_context.options |= ssl.OP_NO_TLSv1  # запрещаем использование TLS 1.0
+ssl_context.options |= ssl.OP_NO_TLSv1_1  # запрещаем использование TLS 1.1
+ssl_context.set_ciphers('ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:DHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:DHE-RSA-CHACHA20-POLY1305')
+ssl_context.load_cert_chain(certfile='cert.pem', keyfile='key.pem')
 
-def send_response(conn, event):
-    stream_id = event.stream_id
-    response_data = json.dumps(dict(event.headers)).encode('utf-8')
+semaphore = asyncio.Semaphore(100)
 
-    conn.send_headers(
-        stream_id=stream_id,
-        headers=[
-            (':status', '200'),
-            ('server', 'basic-h2-server/1.0'),
-            ('content-length', str(len(response_data))),
-            ('content-type', 'application/json'),
-        ],
-    )
-    conn.send_data(
-        stream_id=stream_id,
-        data=response_data,
-        end_stream=True
-    )
+async def download_with_lock(request):
+    async with semaphore:
+        delay = random.randint(1, 2)
+        await asyncio.sleep(delay)
+        return await download_file(request)
 
+app = web.Application()
+app.router.add_get('/download', download_with_lock)
 
-def handle(sock):
-    config = h2.config.H2Configuration()
-    config.validate_outbound_headers = False
-    config.validate_inbound_headers = False
-    config.normalize_outbound_headers = False
-    conn = h2.connection.H2Connection(config=config)
-    conn.initiate_connection()
-    sock.sendall(conn.data_to_send())
-
-    try:
-        while True:
-            data = sock.recv(65535)
-            if not data:
-                break
-            print(data)
-            events = conn.receive_data(data)
-            for event in events:
-                if isinstance(event, h2.events.RequestReceived):
-                    send_response(conn, event)
-
-            data_to_send = conn.data_to_send()
-            if data_to_send:
-                sock.sendall(data_to_send)
-    except Exception:
-        pass
-
-
-sock = socket.socket()
-sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-sock.bind(('0.0.0.0', 443))
-sock.listen(5)
-
-while True:
-    handle(sock.accept()[0])
+if __name__ == '__main__':
+    web.run_app(app, port=8443, ssl_context=ssl_context)

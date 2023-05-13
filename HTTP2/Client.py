@@ -1,36 +1,45 @@
-import h2.connection
-import http2client
-import json
+import random
 
-config = h2.connection.H2Configuration()
-config.validate_outbound_headers = False
-config.validate_inbound_headers = False
-config.normalize_outbound_headers = False
-s = http2client.Session("localhost", 443, config=config, http2_prior_knowledge=True)
+import aiohttp
+import asyncio
+import os
+import ssl
+import time
+from datetime import datetime
 
-body = b'0\r\n\r\nGET /404 HTTP/2.0\r\nx: x'
+semaphore = asyncio.Semaphore(100)
 
-headers = [
-    (':method', 'POST'),
-    (':path', "/anything"),
-    (':authority', "httpbin.org"),
-    (':scheme', 'https'),
-    # ('User-Agent', 'testet\r\nTransfer-Encoding: chunked'),
-    ('content-length', len(body)),
-]
+async def download_file(connector, filename):
+    url = 'https://localhost:8443/download'
+    if os.path.exists(filename):
+        os.remove(filename)
+    async with semaphore:
+        await asyncio.sleep(random.uniform(2, 3))
+        start_time = time.monotonic()
+        async with aiohttp.ClientSession(connector=connector) as session:
+            async with session.get(url) as response:
+                with open(filename, 'wb') as file:
+                    async for chunk in response.content.iter_chunked(1024):
+                        file.write(chunk)
+        end_time = time.monotonic()
 
-# If the headers is set, the url will be ignored
-#stream1 = s.post("https://httpbin.org", headers=headers, data=body)
-stream2 = s.get("http://localhost:8080/")
-#print(json.loads(stream1.getData()))
-print(json.loads(stream2.getData()))
+    duration = end_time - start_time
+    date_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
+
+    with open(f'download_times_with_holl_locking.txt', 'a') as f:
+        f.write(f'{date_time} - Download took {duration:.3f} seconds\n')
 
 
-resp = http2client.request("GET", "http://localhost:8080/",
-                           http2_prior_knowledge=True,
-                           normalize=False,
-                           validate=False,
-                           timeout=10
-                           )
-print(resp.getHeaders())
-print(json.loads(resp.getData()))
+if __name__ == '__main__':
+    ssl_context = ssl.SSLContext(ssl.PROTOCOL_SSLv23)
+    ssl_context.set_ciphers('ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:DHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:DHE-RSA-CHACHA20-POLY1305')
+    ssl_context.options |= ssl.OP_NO_SSLv2 | ssl.OP_NO_SSLv3 | ssl.OP_NO_TLSv1 | ssl.OP_NO_TLSv1_1
+    ssl_context.minimum_version = ssl.TLSVersion.TLSv1_3
+
+    loop = asyncio.get_event_loop()
+    connector = aiohttp.TCPConnector(ssl=ssl_context)
+
+    NUM_OF_REQUESTS = 100
+    filenames = [f'bigfile_downloaded_{i}.txt' for i in range(NUM_OF_REQUESTS)]
+    tasks = [loop.create_task(download_file(connector, filename)) for filename in filenames]
+    loop.run_until_complete(asyncio.wait(tasks))
