@@ -40,7 +40,7 @@ async def run_client():
     timeout = aiohttp.ClientTimeout(total=60)
 
     async with aiohttp.ClientSession(connector=connector, timeout=timeout) as session:
-        NUM_OF_REQUESTS = 10
+        NUM_OF_REQUESTS = 100
         current_dir = os.getcwd()
         folder_name = 'save'
         new_dir = os.path.join(current_dir, folder_name)
