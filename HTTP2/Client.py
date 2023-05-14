@@ -9,12 +9,11 @@ from datetime import datetime
 
 semaphore = asyncio.Semaphore(100)
 
-async def download_file(session, connector, filename):
+async def download_file(session, filename):
     url = 'https://localhost:8443/download'
     if os.path.exists(filename):
         os.remove(filename)
     async with semaphore:
-        await asyncio.sleep(random.uniform(2, 3))
         start_time = time.monotonic()
         async with session.get(url) as response:
             with open(filename, 'wb') as file:
@@ -47,7 +46,7 @@ async def run_client():
         if not os.path.exists(new_dir):
             os.makedirs(new_dir)
         filenames = [os.path.join(new_dir, f'bigfile_downloaded_{i}.txt') for i in range(NUM_OF_REQUESTS)]
-        tasks = [download_file(session, connector, filename) for filename in filenames]
+        tasks = [download_file(session, filename) for filename in filenames]
         await asyncio.gather(*tasks)
 
 
