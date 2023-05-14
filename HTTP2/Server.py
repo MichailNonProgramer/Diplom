@@ -24,8 +24,9 @@ semaphore = asyncio.Semaphore(100)
 async def download_with_lock(request):
     async with semaphore:
         delay = random.randint(5, 10)
+        with open(f'download_times_with_holl_locking_timeout.txt', 'a') as f:
+            f.write(f'{delay:.3f} seconds\n')
         await asyncio.sleep(delay)
-        print(1)
         return await download_file(request)
 
 app = web.Application()
