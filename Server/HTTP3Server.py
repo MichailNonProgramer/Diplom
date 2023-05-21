@@ -2,6 +2,7 @@ import argparse
 import asyncio
 import importlib
 import logging
+import os
 import time
 from collections import deque
 from email.utils import formatdate
@@ -24,7 +25,7 @@ from aioquic.h3.events import (
 from aioquic.h3.exceptions import NoAvailablePushIDError
 from aioquic.quic.configuration import QuicConfiguration
 from aioquic.quic.events import DatagramFrameReceived, ProtocolNegotiated, QuicEvent
-from aioquic.quic.logger import QuicFileLogger
+from aioquic.quic.logger import QuicFileLogger, QuicLogger
 from aioquic.tls import SessionTicket
 
 try:
@@ -481,95 +482,29 @@ async def main(
     port: int,
     configuration: QuicConfiguration,
     session_ticket_store: SessionTicketStore,
-    retry: bool,
 ) -> None:
     await serve(
-        args.host,
-        args.port,
+        host,
+        port,
         configuration=configuration,
         create_protocol=HttpServerProtocol,
         session_ticket_fetcher=session_ticket_store.pop,
         session_ticket_handler=session_ticket_store.add,
-        retry=args.retry,
+        retry=True,
     )
     await asyncio.Future()
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="QUIC server")
-    parser.add_argument(
-        "app",
-        type=str,
-        nargs="?",
-        default="demo:app",
-        help="the ASGI application as <module>:<attribute>",
-    )
-    parser.add_argument(
-        "-c",
-        "--certificate",
-        type=str,
-        required=True,
-        help="load the TLS certificate from the specified file",
-    )
-    parser.add_argument(
-        "--host",
-        type=str,
-        default="::",
-        help="listen on the specified address (defaults to ::)",
-    )
-    parser.add_argument(
-        "--port",
-        type=int,
-        default=4433,
-        help="listen on the specified port (defaults to 4433)",
-    )
-    parser.add_argument(
-        "-k",
-        "--private-key",
-        type=str,
-        help="load the TLS private key from the specified file",
-    )
-    parser.add_argument(
-        "-l",
-        "--secrets-log",
-        type=str,
-        help="log secrets to a file, for use with Wireshark",
-    )
-    parser.add_argument(
-        "-q",
-        "--quic-log",
-        type=str,
-        help="log QUIC events to QLOG files in the specified directory",
-    )
-    parser.add_argument(
-        "--retry",
-        action="store_true",
-        help="send a retry for new connections",
-    )
-    parser.add_argument(
-        "-v", "--verbose", action="store_true", help="increase logging verbosity"
-    )
-    args = parser.parse_args()
+    # import ASGI application
 
-    logging.basicConfig(
-        format="%(asctime)s %(levelname)s %(name)s %(message)s",
-        level=logging.DEBUG if args.verbose else logging.INFO,
-    )
+    # create QUIC logger
 
-    module_str, attr_str = args.app.split(":", maxsplit=1)
-    module = importlib.import_module(module_str)
-    application = getattr(module, attr_str)
+    quic_logger = QuicLogger()
 
-    if args.quic_log:
-        quic_logger = QuicFileLogger(args.quic_log)
-    else:
-        quic_logger = None
+    # open SSL log file
 
-    if args.secrets_log:
-        secrets_log_file = open(args.secrets_log, "a")
-    else:
-        secrets_log_file = None
-
+    secrets_log_file = open("log.txt", "a")
     configuration = QuicConfiguration(
         alpn_protocols=H3_ALPN + H0_ALPN + ["siduck"],
         is_client=False,
@@ -578,7 +513,11 @@ if __name__ == "__main__":
         secrets_log_file=secrets_log_file,
     )
 
-    configuration.load_cert_chain(args.certificate, args.private_key)
+    # load SSL certificate and key
+    configuration.load_cert_chain(
+        os.path.join(os.path.abspath(os.curdir), "cert.pem"),
+        os.path.join(os.path.abspath(os.curdir), "key.pem"),
+    )
 
     if uvloop is not None:
         uvloop.install()
@@ -586,11 +525,10 @@ if __name__ == "__main__":
     try:
         asyncio.run(
             main(
-                host=args.host,
-                port=args.port,
+                host="localhost",
+                port=4433,
                 configuration=configuration,
                 session_ticket_store=SessionTicketStore(),
-                retry=args.retry,
             )
         )
     except KeyboardInterrupt:

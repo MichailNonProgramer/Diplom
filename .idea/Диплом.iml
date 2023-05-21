@@ -5,6 +5,7 @@
       <excludeFolder url="file://$MODULE_DIR$/Client/venv" />
       <excludeFolder url="file://$MODULE_DIR$/HTTP2/venv" />
       <excludeFolder url="file://$MODULE_DIR$/HTTP3/venv" />
+      <excludeFolder url="file://$MODULE_DIR$/HTTP1/venv" />
     </content>
     <orderEntry type="inheritedJdk" />
     <orderEntry type="sourceFolder" forTests="false" />

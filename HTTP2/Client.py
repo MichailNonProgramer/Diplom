@@ -7,10 +7,10 @@ import ssl
 import time
 from datetime import datetime
 
-semaphore = asyncio.Semaphore(100)
+semaphore = asyncio.Semaphore(1)
 
 async def download_file(session, filename):
-    url = 'https://localhost:8443/download'
+    url = 'https://localhost:8444/download'
     if os.path.exists(filename):
         os.remove(filename)
     async with semaphore:
@@ -24,7 +24,7 @@ async def download_file(session, filename):
     duration = end_time - start_time
     date_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
 
-    with open(f'download_times_with_holl_locking.txt', 'a') as f:
+    with open(f'download_with_lock.txt', 'a') as f:
         f.write(f'{date_time} - Download took {duration:.3f} seconds\n')
 
 async def run_client():
@@ -37,7 +37,7 @@ async def run_client():
 
     connector = aiohttp.TCPConnector(ssl=ssl_context)
     timeout = aiohttp.ClientTimeout(total=60)
-
+    all_time = time.monotonic()
     async with aiohttp.ClientSession(connector=connector, timeout=timeout) as session:
         NUM_OF_REQUESTS = 100
         current_dir = os.getcwd()
@@ -48,7 +48,12 @@ async def run_client():
         filenames = [os.path.join(new_dir, f'bigfile_downloaded_{i}.txt') for i in range(NUM_OF_REQUESTS)]
         tasks = [download_file(session, filename) for filename in filenames]
         await asyncio.gather(*tasks)
+        end_timeAllTime = time.monotonic()
+        duration = end_timeAllTime - all_time
+        date_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
+        with open(f'AllTimeFile.txt', 'a') as f:
+            f.write(f'{date_time} - download_with_lock {duration:.3f} seconds\n')
 
 
 if __name__ == '__main__':
-    asyncio.run(run_client())
+    asyncio.get_event_loop().run_until_complete(run_client())
