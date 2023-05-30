@@ -97,7 +97,7 @@ class MyServerProtocol(QuicConnectionProtocol):
         self._myConn.handle_event(event)
 
 
-class quicserver(MyServerProtocol):
+class QuicServer(MyServerProtocol):
     def __init__(self, host, port, configuration):
         super().__init__(self)
         self.host = host
@@ -162,7 +162,7 @@ class quicconnectserver():
         self.quic_obj = self.create_quic_server_object()
 
     def create_quic_server_object(self):
-        return quicserver(self.hostip, self.portnr, configuration=self.configuration)
+        return QuicServer(self.hostip, self.portnr, configuration=self.configuration)
 
 
 def processing(server, data_queue):
@@ -174,15 +174,14 @@ def processing(server, data_queue):
             frame = data_queue.get()
             t2 = time.time()
 
-            if (frame["time_taken"] + (t2 - frame["t1"]) < 0.15):
+            if frame["time_taken"] + (t2 - frame["t1"]) < 10:
                 print("frame ", frame["id"], " processing")
-                time.sleep(0.03)
                 server_reply = frame["id"] + "processed"
                 server.quic_obj.server_send(server_reply)
                 time_start = time.time()
             else:
                 print("frame ", frame["id"], " dropped")
-                server_reply = frame["id"] + "dropped"
+                server_reply = str(frame["id"]) + "dropped"
                 server.quic_obj.server_send(server_reply)
 
 
@@ -255,6 +254,20 @@ def download_file(server):
 frames = []
 
 
+def save_file():
+    current_dir = os.getcwd()
+    folder_name = 'save'
+    new_dir = os.path.join(current_dir, folder_name)
+    if not os.path.exists(new_dir):
+        os.makedirs(new_dir)
+    filenames = [os.path.join(new_dir, f'C:\\Users\\gotom\\OneDrive\\Рабочий стол\\Диплом\\QUIC\\bigfile_downloaded_{i}.txt') for i in range(1)]
+
+    print("data")
+    with open("C:\\Users\\gotom\\OneDrive\\Рабочий стол\\Диплом\\QUIC\\file.txt", 'wb') as file:
+        for data in frames:
+            file.write(data)
+
+
 def main():
     # print("entered server code")
     print("frame,time,offset,recv time")
@@ -279,55 +292,41 @@ def main():
     while True:
         id, frame, time_frame, type, next_code = quic_server.quic_obj.recieve()
         print(id)
-        print(frame)
-        print(time_frame)
-        print(type)
-        print(next_code)
-        print("1231233")
-        try:
-            if id:
-                temp = dict()
-                temp["frame"] = frame
-                temp["time_taken"] = time_frame
-                temp["t1"] = time.time()
-                temp["id"] = id
-                print(id, ",", time_frame, ",", type, ",", next_code)
-                data_queue.put(temp)
-                frames.append(frame.decode("utf-8").split(",")[-1])
 
+        if id is not None:
+            temp = dict()
+            temp["frame"] = frame
+            temp["time_taken"] = time_frame
+            temp["t1"] = time.time()
+            temp["id"] = id
+
+            data_queue.put(temp)
+            try:
                 if frame.decode("utf-8").split(",")[-1] == "start":
                     timer = time.monotonic()
                     print("start")
-
+                    continue
+            except Exception:
+                print("error_start")
+            try:
                 if frame.decode("utf-8").split(",")[-1] == "all":
-                    save_file()
-                    print("OK")
-                    quic_server.quic_obj.server_send(str.encode("Exit"))
                     end_time = time.monotonic()
                     duration = end_time - timer
                     date_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
-                    with open(f'download_time.txt', 'a') as f:
+                    with open(f'C:\\Users\\gotom\\OneDrive\\Рабочий стол\\Диплом\\QUIC\\download_time.txt', 'a') as f:
                         f.write(f'{date_time} - Download took {duration:.3f} seconds\n')
+                    save_file()
+                    print("OK")
+                    quic_server.quic_obj.server_send(str.encode("Exit"))
+                    continue
+            except Exception:
+                print("error all")
+            frames.append(frame)
 
-            else:
-                if counter > 10:
-                    exit()
-                counter += 1
-
-        except Exception:
-            print(frame)
-
-
-def save_file():
-    current_dir = os.getcwd()
-    folder_name = 'save'
-    new_dir = os.path.join(current_dir, folder_name)
-    if not os.path.exists(new_dir):
-        os.makedirs(new_dir)
-    filenames = [os.path.join(new_dir, f'bigfile_downloaded_{i}.txt') for i in range(1)]
-    with open(filenames[0], 'wb') as file:
-        for data in frames:
-            file.write(data)
+        else:
+            if counter > 10:
+                exit()
+            counter += 1
 
 
 if __name__ == "__main__":

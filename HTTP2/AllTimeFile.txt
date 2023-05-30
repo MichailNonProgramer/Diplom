@@ -1,0 +1,3 @@
+2023-05-21 17:49:45.353 - download_file 19.094 seconds
+2023-05-21 18:14:54.980 - download_with_packet_loss 716.703 seconds
+2023-05-21 18:37:08.827 - download_with_lock 760.375 seconds

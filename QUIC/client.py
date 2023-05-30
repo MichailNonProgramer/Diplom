@@ -217,12 +217,6 @@ def parse(name):
 
 
     parser.add_argument(
-        "--querysize",
-        type=int,
-        default=5000,
-        help="Amount of data to send in bytes"
-    )
-    parser.add_argument(
         "--streamrange",
         type=int,
         default=100,
@@ -250,8 +244,7 @@ def main():
     print("Client Started")
     args = parse("Parse client args")
     test_data = []
-    news=args.streamrange
-    querysize=args.querysize
+
     if args.quic_log:
         from aioquic.quic import configuration
         from aioquic.quic.logger import QuicFileLogger
@@ -269,12 +262,14 @@ def main():
     # print("sending test data size of " + str(int(str(sys.getsizeof(test_data[0])))/float(1<<20)) + " MB")
     quic_client = quicconnectclient(args.host,args.port,args.verbose,args.maxdata,args.maxstreamdata,args.quic_log)
 
-    print("sending test data ",len(test_data)," times")
+    print("sending test data ", len(test_data)," times")
     quic_client.quic_obj.send_frame("start".encode("utf-8"))
-    with open("text.txt", 'rb') as f:
-        data = f.read(1024)
-        time.sleep(0.03)
-        quic_client.quic_obj.send_frame(data)
+    with open('C:\\Users\\gotom\\OneDrive\\Рабочий стол\\Диплом\\QUIC\\text.txt', 'rb') as f:
+        data = f.read(12000)
+        while data != b"":
+
+            quic_client.quic_obj.send_frame(data)
+            data = f.read(12000)
     quic_client.quic_obj.send_frame("all".encode("utf-8"))
     print(server_reply)
 
