@@ -494,7 +494,7 @@ async def main(
     retry: bool,
 ) -> None:
     print("connect")
-    await serve(
+    a, b, c, d = await serve(
         host,
         port,
         configuration=configuration,
@@ -504,7 +504,7 @@ async def main(
         retry=retry,
     )
     print("connect done")
-    await asyncio.Future()
+    write, red = await asyncio.Future()
 
 
 if __name__ == "__main__":
