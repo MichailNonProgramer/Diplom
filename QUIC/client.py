@@ -1,4 +1,3 @@
-import sys
 import logging
 import ssl
 import asyncio
@@ -19,13 +18,10 @@ dd = 0
 server_reply = list()
 total_data = bytes()
 frame_data = []
+send_data = dict()
 send_time = 0
 t2 = 0
 offset = 0
-
-
-# Define how the client should work. Inherits from QuicConnectionProtocol.
-# Override QuicEvent
 
 
 class MyClient(QuicConnectionProtocol):
@@ -35,15 +31,12 @@ class MyClient(QuicConnectionProtocol):
         self.offset = 0
 
     def insert_timestamp(self, data, index):
-        # inserting the offset,send time,index
         self.t1 = time.time()
         header = str(self.t1) + "," + str(self.offset) + "," + str(index) + ","
         header = header.encode()
-        # print("current time is",self.t1)
         data = header + data
         return data
 
-    # Assemble a query to send to the server
     async def query(self, data, index) -> None:
 
         query = data
@@ -52,6 +45,7 @@ class MyClient(QuicConnectionProtocol):
         stream_id = self._quic.get_next_available_stream_id()
         logger.debug(f"Next Stream ID will be : {stream_id}")
         query = self.insert_timestamp(query, index)
+        send_data[stream_id] = (bytes(query))
         self._quic.send_stream_data(stream_id, bytes(query), True)
         waiter = self._loop.create_future()
         self._ack_waiter = waiter
@@ -62,8 +56,7 @@ class MyClient(QuicConnectionProtocol):
     def quic_event_received(self, event: QuicEvent) -> None:
         if self._ack_waiter is not None:
             if isinstance(event, StreamReset):
-                print(123)
-                pass
+                self.query(send_data[event.stream_id], event.stream_id)
             if isinstance(event, StreamDataReceived):
                 global dd, server_reply
                 t4 = time.time()
@@ -83,8 +76,6 @@ class MyClient(QuicConnectionProtocol):
                 else:
                     reply = event.data.decode()
                     server_reply.append(reply)
-                    # print("REPLY",reply)
-                # python QUIC_Client.py -k -qsize 50000 -v
 
 
 class quicconnect(MyClient):
@@ -257,10 +248,6 @@ def main():
         from aioquic.quic import configuration
         configuration.verify_mode = ssl.CERT_NONE
 
-    # for i in range(0,news):
-    #     q = randbytes(n=querysize)
-    #     test_data.append(q)
-    # print("sending test data size of " + str(int(str(sys.getsizeof(test_data[0])))/float(1<<20)) + " MB")
     quic_client = quicconnectclient(args.host, args.port, args.verbose, args.maxdata, args.maxstreamdata, args.quic_log)
 
     print("sending test data ", len(test_data), " times")

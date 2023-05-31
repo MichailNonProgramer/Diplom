@@ -98,10 +98,3 @@
 2023-05-31 15:36:28.472 - Download took 1.922 seconds
 2023-05-31 15:36:30.377 - Download took 1.797 seconds
 2023-05-31 15:36:32.189 - Download took 1.718 seconds
-2023-05-31 15:36:34.090 - Download took 1.782 seconds
-2023-05-31 15:36:36.082 - Download took 1.891 seconds
-2023-05-31 15:36:38.245 - Download took 2.047 seconds
-2023-05-31 15:36:40.096 - Download took 1.766 seconds
-2023-05-31 15:36:41.778 - Download took 1.625 seconds
-2023-05-31 15:36:43.785 - Download took 1.891 seconds
-2023-05-31 15:36:45.877 - Download took 1.969 seconds

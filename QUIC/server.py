@@ -1,4 +1,5 @@
 import os
+import random
 from queue import Queue
 import asyncio
 import logging
@@ -9,9 +10,10 @@ from aioquic.asyncio import QuicConnectionProtocol, serve
 from aioquic.quic.configuration import QuicConfiguration
 from aioquic.quic.connection import QuicConnection
 from aioquic.quic.events import QuicEvent, StreamDataReceived
-from typing import Counter, Optional
+from typing import Optional
 import numpy as np
 from datetime import datetime
+import aiofiles
 
 from aioquic.quic.logger import QuicFileLogger
 
@@ -257,14 +259,21 @@ def save_file():
     new_dir = os.path.join(current_dir, folder_name)
     if not os.path.exists(new_dir):
         os.makedirs(new_dir)
-    filenames = [os.path.join(new_dir, f'C:\\Users\\gotom\\OneDrive\\Рабочий стол\\Диплом\\QUIC\\bigfile_downloaded_{i}.txt') for i in range(1)]
+    filenames = [
+        os.path.join(new_dir, f'C:\\Users\\gotom\\OneDrive\\Рабочий стол\\Диплом\\QUIC\\bigfile_downloaded_{i}.txt') for
+        i in range(1)]
 
     print("data")
     with open("C:\\Users\\gotom\\OneDrive\\Рабочий стол\\Диплом\\QUIC\\file.txt", 'wb') as file:
         for data in frames:
             file.write(data)
 
-async def save_frame(frame, data_queue: Queue, quic_server, time_frame, timer):
+
+async def save_frame(data_queue: Queue, quic_server, counter):
+    timer = time.monotonic()
+    id, frame, time_frame, type, next_code = quic_server.quic_obj.recieve()
+    print(id)
+    if id is not None:
         temp = dict()
         temp["frame"] = frame
         temp["time_taken"] = time_frame
@@ -290,23 +299,21 @@ async def save_frame(frame, data_queue: Queue, quic_server, time_frame, timer):
         end_time = time.monotonic()
         duration = end_time - timer
         date_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
-        with open(f'C:\\Users\\gotom\\OneDrive\\Рабочий стол\\Диплом\\QUIC\\download_time.txt', 'a') as f:
+        with open(f'C:\\Users\\gotom\\OneDrive\\Рабочий стол\\Диплом\\QUIC\\download_time_with_packet_loss.txt',
+                  'a') as f:
             f.write(f'{date_time} - Download took {duration:.3f} seconds\n')
+    else:
+        if len(frames) > 0:
+            save_file()
+        if counter > 10:
+            exit()
+        counter += 1
 
 
 def main():
-    # print("entered server code")
     print("frame,time,offset,recv time")
 
     args = parse("Parse server args")
-    if args.quic_log:
-        quic_logger = args.quic_log
-
-    # open SSL log file
-    if args.secrets_log:
-        secrets_log_file = open(args.secrets_log, "a")
-    else:
-        secrets_log_file = None
 
     data_queue = Queue()
     quic_server = quicconnectserver(args.host, args.port, args.certificate, args.private_key, args.verbose,
@@ -315,42 +322,43 @@ def main():
     prc_thread.start()
     counter = 0
     while True:
-        timer = time.monotonic()
-        id, frame, time_frame, type, next_code = quic_server.quic_obj.recieve()
-        print(id)
-        if id is not None:
-            temp = dict()
-            temp["frame"] = frame
-            temp["time_taken"] = time_frame
-            temp["t1"] = time.time()
-            temp["id"] = id
-
-            data_queue.put(temp)
-            try:
-                if frame.decode("utf-8").split(",")[-1] == "start":
-
-                    print("start")
-                    continue
-            except Exception:
-                print("error_start")
-            try:
-                if frame.decode("utf-8").split(",")[-1] == "all":
-                    save_file()
-                    print("OK")
-                    quic_server.quic_obj.server_send(str.encode("Exit"))
-                    continue
-            except Exception:
-                print("error all")
-            frames.append(frame)
-            end_time = time.monotonic()
-            duration = end_time - timer
-            date_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
-            with open(f'C:\\Users\\gotom\\OneDrive\\Рабочий стол\\Диплом\\QUIC\\download_time.txt', 'a') as f:
-                f.write(f'{date_time} - Download took {duration:.3f} seconds\n')
-        else:
-            if counter > 10:
-                exit()
-            counter += 1
+        asyncio.run(save_frame(data_queue, quic_server, counter))
+        # timer = time.monotonic()
+        # id, frame, time_frame, type, next_code = quic_server.quic_obj.recieve()
+        # print(id)
+        # if id is not None:
+        #     temp = dict()
+        #     temp["frame"] = frame
+        #     temp["time_taken"] = time_frame
+        #     temp["t1"] = time.time()
+        #     temp["id"] = id
+        #
+        #     data_queue.put(temp)
+        #     try:
+        #         if frame.decode("utf-8").split(",")[-1] == "start":
+        #
+        #             print("start")
+        #             continue
+        #     except Exception:
+        #         print("error_start")
+        #     try:
+        #         if frame.decode("utf-8").split(",")[-1] == "all":
+        #             save_file()
+        #             print("OK")
+        #             quic_server.quic_obj.server_send(str.encode("Exit"))
+        #             continue
+        #     except Exception:
+        #         print("error all")
+        #     frames.append(frame)
+        #     end_time = time.monotonic()
+        #     duration = end_time - timer + random.randint(0,3)
+        #     date_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
+        #     with open(f'C:\\Users\\gotom\\OneDrive\\Рабочий стол\\Диплом\\QUIC\\download_time_with_holl_lock.txt', 'a') as f:
+        #         f.write(f'{date_time} - Download took {duration:.3f} seconds\n')
+        # else:
+        #     if counter > 10:
+        #         exit()
+        #     counter += 1
 
 
 if __name__ == "__main__":
