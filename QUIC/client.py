@@ -1,4 +1,3 @@
-
 import sys
 import logging
 import ssl
@@ -10,7 +9,7 @@ import random, itertools, struct
 from aioquic.asyncio import QuicConnectionProtocol
 from aioquic.quic.configuration import QuicConfiguration
 from aioquic.asyncio.client import connect
-from aioquic.quic.events import QuicEvent, StreamDataReceived
+from aioquic.quic.events import QuicEvent, StreamDataReceived, StreamReset
 from aioquic.quic.logger import QuicFileLogger
 
 logger = logging.getLogger("client")
@@ -40,7 +39,7 @@ class MyClient(QuicConnectionProtocol):
         self.t1 = time.time()
         header = str(self.t1) + "," + str(self.offset) + "," + str(index) + ","
         header = header.encode()
-        #print("current time is",self.t1)
+        # print("current time is",self.t1)
         data = header + data
         return data
 
@@ -51,7 +50,7 @@ class MyClient(QuicConnectionProtocol):
         if isinstance(query, str):
             query = query.encode()
         stream_id = self._quic.get_next_available_stream_id()
-        logger.debug(f"Next Stream ID will be : {stream_id}") 
+        logger.debug(f"Next Stream ID will be : {stream_id}")
         query = self.insert_timestamp(query, index)
         self._quic.send_stream_data(stream_id, bytes(query), True)
         waiter = self._loop.create_future()
@@ -62,6 +61,9 @@ class MyClient(QuicConnectionProtocol):
     # Define behavior when receiving a response from the server
     def quic_event_received(self, event: QuicEvent) -> None:
         if self._ack_waiter is not None:
+            if isinstance(event, StreamReset):
+                print(123)
+                pass
             if isinstance(event, StreamDataReceived):
                 global dd, server_reply
                 t4 = time.time()
@@ -135,7 +137,7 @@ class quicconnect(MyClient):
 
 
 class quicconnectclient():
-    def __init__(self, host_addr, port_nr, verbose,md,msd,qlog):
+    def __init__(self, host_addr, port_nr, verbose, md, msd, qlog):
         logging.basicConfig(
             format="%(asctime)s %(levelname)s %(name)s %(message)s",
             level=logging.DEBUG if verbose else logging.INFO, )
@@ -147,33 +149,32 @@ class quicconnectclient():
         self.hostip = host_addr
         self.portnr = port_nr
         self.quic_obj = self.create_quic_server_object()
-        self.configuration.max_data= md
-        self.configuration.max_stream_data=msd
-
+        self.configuration.max_data = md
+        self.configuration.max_stream_data = msd
 
     def create_quic_server_object(self):
         return quicconnect(self.hostip, self.portnr, configuration=self.configuration)
 
 
-def randbytes(n,_struct8k=struct.Struct("!1000Q").pack_into):
-    if n<8000:
-        longs=(n+7)//8
-        return struct.pack("!%iQ"%longs,*map(
-            random.getrandbits,itertools.repeat(64,longs)))[:n]
-    data=bytearray(n)
-    for offset in range(0,n-7999,8000):
-        _struct8k(data,offset,
-            *map(random.getrandbits,itertools.repeat(64,1000)))
-    offset+=8000
-    data[offset:]=randbytes(n-offset)
+def randbytes(n, _struct8k=struct.Struct("!1000Q").pack_into):
+    if n < 8000:
+        longs = (n + 7) // 8
+        return struct.pack("!%iQ" % longs, *map(
+            random.getrandbits, itertools.repeat(64, longs)))[:n]
+    data = bytearray(n)
+    for offset in range(0, n - 7999, 8000):
+        _struct8k(data, offset,
+                  *map(random.getrandbits, itertools.repeat(64, 1000)))
+    offset += 8000
+    data[offset:] = randbytes(n - offset)
     return data
+
 
 import argparse
 
+
 def parse(name):
-
     parser = argparse.ArgumentParser(description="Parser for Quic Client")
-
 
     parser.add_argument(
         "--host",
@@ -215,7 +216,6 @@ def parse(name):
         "-v", "--verbose", action="store_true", help="increase logging verbosity"
     )
 
-
     parser.add_argument(
         "--streamrange",
         type=int,
@@ -240,6 +240,7 @@ def parse(name):
 
     return args
 
+
 def main():
     print("Client Started")
     args = parse("Parse client args")
@@ -260,23 +261,20 @@ def main():
     #     q = randbytes(n=querysize)
     #     test_data.append(q)
     # print("sending test data size of " + str(int(str(sys.getsizeof(test_data[0])))/float(1<<20)) + " MB")
-    quic_client = quicconnectclient(args.host,args.port,args.verbose,args.maxdata,args.maxstreamdata,args.quic_log)
+    quic_client = quicconnectclient(args.host, args.port, args.verbose, args.maxdata, args.maxstreamdata, args.quic_log)
 
-    print("sending test data ", len(test_data)," times")
+    print("sending test data ", len(test_data), " times")
     quic_client.quic_obj.send_frame("start".encode("utf-8"))
     with open('C:\\Users\\gotom\\OneDrive\\Рабочий стол\\Диплом\\QUIC\\text.txt', 'rb') as f:
-        data = f.read(12000)
+        data = f.read(40000)
         while data != b"":
-
             quic_client.quic_obj.send_frame(data)
-            data = f.read(12000)
+            data = f.read(40000)
     quic_client.quic_obj.send_frame("all".encode("utf-8"))
     print(server_reply)
 
     quic_client.quic_obj.client_close()
 
 
-
 if __name__ == "__main__":
     main()
-

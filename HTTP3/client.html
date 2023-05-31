@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+  <title>WebTransport over HTTP/3 client</title>
+  <meta charset="utf-8">
+  <!-- WebTransport origin trial token. See https://developer.chrome.com/origintrials/#/view_trial/793759434324049921 -->
+  <meta http-equiv="origin-trial" content="MIIEvwIBADANBgkqhkiG9w0BAQEFAASCBKkwggSlAgEAAoIBAQCt6xNiyRc/P62P
+2qR6IoD8y9A4zfZIFp+JGdQhJ6LmZNLnDwShDCb+VkvqVnoH6qOx8d8O+eDBCQR1
+hm7pQKIqoehdgvZy+V/6wlEssfo/eoX9Ym+SdGkHPIKyCBghxyhjcKM/dLNjacwC
+nEx+mqBglVTDAlMOnHgtpLdlF23fRPtpNu/hrK15aw2Oy2bJ7Bfoi3jCoMIgOBUZ
+WHFEPxEspXg8fJf4udGi0JccZXQT6E+Q6QoRkcjkpWLpIVfIm1OGNLtynLdKgjUx
+W8NdldWUfuahnKKEej6Rfm4IVGPEdio6PFdTfG3SO7GG3kmdsj7+0tJcn/o4EvDv
+uvZ/crOrAgMBAAECggEAU8NAVvea5q94nCwlw10S2q4e3vzzfMzIkXOLI1y/rE8q
+9HXbOOVtclmFvptfsqhjprRjRgc7JD1/lErm6BhlAjtwenk00TMh8tfb2LbvW9ta
+5Sqfqd2/J+kQ2UXkuX/+B8acGVfPfjXaN/enL+KxE1NYu4NHFWZuyyzl1x5toHX/
+tM5YtvLEgLxRYYZxLNpj8npqg9fACWxrsxzuYWVvFV4+WU5oh2O5XuIat4g2mD81
+oczAUoGSzyeOTvW/AbnRU20ZD+fySbgn9aArZZjfgxfm9QZ7iLksEh+mlx8ZVTUd
+OhlE2Rec5sehJ2VKxlwxKb3QaUWH/nwcXbI9cfpsIQKBgQDxgPPvjjrqfYjvjgsS
+hmDT2v2ATM1kmEh8giCmzgiY3gt3rmgsn0ReMOmGu85eQ+0u9/nWBOu0EjJqsNyg
+AZ1qbNZKhV3Pnv4ypWhLh4vf90jACuZDN7gUi5/7lV9Reie6mBWML0VPuruIpmRP
+5u3i2F9VSMpjiKvXAlB2jOmNPwKBgQC4W5OTLjSD/ExhTiB/cywjqzQhaozFwfiS
+yZAWABfGob1dw7uUBGTNUhTLU9ETBMgtmTUAV8Tj/azVlXEEihdq7AcabZxR+A8b
+k9VahtA0IVH4KBsZpzvIaRyAu8akqorCLBtyhe1Lt+PB2VHDHeiaAF9baPqYPgRb
+accQWFcClQKBgQDJTOaHwHNFb9wLace66j2deYUiQ2JUvkZ1WfYjc8tguHywhrSY
+tSzEolqVDshGdLIoG1SpWzKoxx41JjTQPmhbBFtehGocnHdf+dXEVzh1N+bxBGTI
+lJIgtf1lNC3eeUbSVuBnGCPbAFg+4ArvOxsAocBdEy535rztnCU7m9s0+wKBgQCD
+8rdK7hUUKi2Yr0w/K/V5if2DtTkQCWaZ2L3RoTtjJTvdsku9AvAKrCbJ6DGJxTBo
+wnDWz/rRmyxqqcz8DMH5+viSh8UMPdjCSiq34il+RiLe1AWhdLorFGAcG0lvbchm
+dR8n9ocCXJkckygb2Ho0TvPw/s/syuZfbvPU1QVhiQKBgQCi6UzFWIby5gEBTVXq
+kVHGtqzuL4e+DKYkQuyup20WKOKyQc7Ch+e4TXLgsys80w13w8WyZmNpLu2LjbDM
+oMrjYbrvm6QSl5+WoR1pwBcOf6IB7xY+ZTSUEkkMhKwsULHA9YnMfZL1fgH1DclG
+7yK7EsDTYcYqBy7HsGvgmh5Ozw==">
+  <script src="client.js"></script>
+  <link rel="stylesheet" href="client.css">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <body>
+  <div id="top">
+    <div id="explanation">
+      This tool can be used to connect to an arbitrary WebTransport server.
+      It has several limitations:
+      <ul>
+        <li>It can only send an entirety of a stream at once.  Once the stream
+          is opened, all of the data is immediately sent, and the write side of
+          the steam is closed.</li>
+        <li>This tool does not listen to server-initiated bidirectional
+          streams.</li>
+        <li>Stream IDs are different from the one used by QUIC on the wire, as
+          the on-the-wire IDs are not exposed via the Web API.</li>
+        <li>The <code>WebTransport</code> object can be accessed using the developer console via <code>currentTransport</code>.</li>
+      </ul>
+    </div>
+    <div id="tool">
+    <h1>WebTransport over HTTP/3 client</h1>
+    <div>
+      <h2>Establish WebTransport connection</h2>
+      <div class="input-line">
+      <label for="url">URL:</label>
+      <input type="text" name="url" id="url"
+             value="https://localhost:4433/counter">
+      <input type="button" id="connect" value="Connect" onclick="connect()">
+      </div>
+    </div>
+    <div>
+      <h2>Send data over WebTransport</h2>
+      <form name="sending">
+      <textarea name="data" id="data"></textarea>
+      <div>
+        <input type="radio" name="sendtype" value="datagram"
+               id="datagram" checked>
+        <label for="datagram">Send a datagram</label>
+      </div>
+      <div>
+        <input type="radio" name="sendtype" value="unidi" id="unidi-stream">
+        <label for="unidi-stream">Open a unidirectional stream</label>
+      </div>
+      <div>
+        <input type="radio" name="sendtype" value="bidi" id="bidi-stream">
+        <label for="bidi-stream">Open a bidirectional stream</label>
+      </div>
+      <input type="button" id="send" name="send" value="Send data"
+             disabled onclick="sendData()">
+      </form>
+    </div>
+    <div>
+      <h2>Event log</h2>
+      <ul id="event-log">
+      </ul>
+    </div>
+    </div>
+  </div>
+  </body>
+</html>

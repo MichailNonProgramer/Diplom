@@ -1,546 +1,138 @@
 import argparse
 import asyncio
-import importlib
 import logging
-import os
-import time
-from collections import deque
-from email.utils import formatdate
-from typing import Callable, Deque, Dict, List, Optional, Union, cast
+from collections import defaultdict
+from typing import Dict, Optional
 
-import aioquic
-import wsproto
-import wsproto.events
 from aioquic.asyncio import QuicConnectionProtocol, serve
-from aioquic.h0.connection import H0_ALPN, H0Connection
 from aioquic.h3.connection import H3_ALPN, H3Connection
-from aioquic.h3.events import (
-    DatagramReceived,
-    DataReceived,
-    H3Event,
-    HeadersReceived,
-    WebTransportStreamDataReceived,
-)
-from aioquic.h3.exceptions import NoAvailablePushIDError
+from aioquic.h3.events import H3Event, HeadersReceived, WebTransportStreamDataReceived, DatagramReceived
 from aioquic.quic.configuration import QuicConfiguration
-from aioquic.quic.events import DatagramFrameReceived, ProtocolNegotiated, QuicEvent
-from aioquic.quic.logger import QuicFileLogger, QuicLogger
-from aioquic.tls import SessionTicket
+from aioquic.quic.connection import stream_is_unidirectional
+from aioquic.quic.events import ProtocolNegotiated, StreamReset, QuicEvent
 
-try:
-    import uvloop
-except ImportError:
-    uvloop = None
+BIND_ADDRESS = '::1'
+BIND_PORT = 4433
 
-AsgiApplication = Callable
-HttpConnection = Union[H0Connection, H3Connection]
+logger = logging.getLogger(__name__)
 
-SERVER_NAME = "aioquic/" + aioquic.__version__
+class CounterHandler:
 
+    def __init__(self, session_id, http: H3Connection) -> None:
+        self._session_id = session_id
+        self._http = http
+        self._counters = defaultdict(int)
 
-class HttpRequestHandler:
-    def __init__(
-        self,
-        *,
-        authority: bytes,
-        connection: HttpConnection,
-        protocol: QuicConnectionProtocol,
-        scope: Dict,
-        stream_ended: bool,
-        stream_id: int,
-        transmit: Callable[[], None],
-    ) -> None:
-        self.authority = authority
-        self.connection = connection
-        self.protocol = protocol
-        self.queue: asyncio.Queue[Dict] = asyncio.Queue()
-        self.scope = scope
-        self.stream_id = stream_id
-        self.transmit = transmit
+    def h3_event_received(self, event: H3Event) -> None:
+        if isinstance(event, DatagramReceived):
+            payload = str(len(event.data)).encode('ascii')
+            self._http.send_datagram(self._session_id, payload)
 
-        if stream_ended:
-            self.queue.put_nowait({"type": "http.request"})
+        if isinstance(event, WebTransportStreamDataReceived):
+            self._counters[event.stream_id] += len(event.data)
+            if event.stream_ended:
+                if stream_is_unidirectional(event.stream_id):
+                    response_id = self._http.create_webtransport_stream(
+                        self._session_id, is_unidirectional=True)
+                else:
+                    response_id = event.stream_id
+                payload = str(self._counters[event.stream_id]).encode('ascii')
+                self._http._quic.send_stream_data(
+                    response_id, payload, end_stream=True)
+                self.stream_closed(event.stream_id)
 
-    def http_event_received(self, event: H3Event) -> None:
-        if isinstance(event, DataReceived):
-            self.queue.put_nowait(
-                {
-                    "type": "http.request",
-                    "body": event.data,
-                    "more_body": not event.stream_ended,
-                }
-            )
-        elif isinstance(event, HeadersReceived) and event.stream_ended:
-            self.queue.put_nowait(
-                {"type": "http.request", "body": b"", "more_body": False}
-            )
-
-    async def run_asgi(self, app: AsgiApplication) -> None:
-        print(2)
-        await app(self.scope, self.receive, self.send)
-
-    async def receive(self) -> Dict:
-        print(1)
-        return await self.queue.get()
-
-    async def send(self, message: Dict) -> None:
-        print(1)
-        if message["type"] == "http.response.start":
-            self.connection.send_headers(
-                stream_id=self.stream_id,
-                headers=[
-                    (b":status", str(message["status"]).encode()),
-                    (b"server", SERVER_NAME.encode()),
-                    (b"date", formatdate(time.time(), usegmt=True).encode()),
-                ]
-                + [(k, v) for k, v in message["headers"]],
-            )
-        elif message["type"] == "http.response.body":
-            self.connection.send_data(
-                stream_id=self.stream_id,
-                data=message.get("body", b""),
-                end_stream=not message.get("more_body", False),
-            )
-        elif message["type"] == "http.response.push" and isinstance(
-            self.connection, H3Connection
-        ):
-            request_headers = [
-                (b":method", b"GET"),
-                (b":scheme", b"https"),
-                (b":authority", self.authority),
-                (b":path", message["path"].encode()),
-            ] + [(k, v) for k, v in message["headers"]]
-
-            # send push promise
-            try:
-                push_stream_id = self.connection.send_push_promise(
-                    stream_id=self.stream_id, headers=request_headers
-                )
-            except NoAvailablePushIDError:
-                return
-
-            # fake request
-            cast(HttpServerProtocol, self.protocol).http_event_received(
-                HeadersReceived(
-                    headers=request_headers, stream_ended=True, stream_id=push_stream_id
-                )
-            )
-        self.transmit()
-
-
-class WebSocketHandler:
-    def __init__(
-        self,
-        *,
-        connection: HttpConnection,
-        scope: Dict,
-        stream_id: int,
-        transmit: Callable[[], None],
-    ) -> None:
-        self.closed = False
-        self.connection = connection
-        self.http_event_queue: Deque[DataReceived] = deque()
-        self.queue: asyncio.Queue[Dict] = asyncio.Queue()
-        self.scope = scope
-        self.stream_id = stream_id
-        self.transmit = transmit
-        self.websocket: Optional[wsproto.Connection] = None
-
-    def http_event_received(self, event: H3Event) -> None:
-        if isinstance(event, DataReceived) and not self.closed:
-            if self.websocket is not None:
-                self.websocket.receive_data(event.data)
-
-                for ws_event in self.websocket.events():
-                    self.websocket_event_received(ws_event)
-            else:
-                # delay event processing until we get `websocket.accept`
-                # from the ASGI application
-                self.http_event_queue.append(event)
-
-    def websocket_event_received(self, event: wsproto.events.Event) -> None:
-        if isinstance(event, wsproto.events.TextMessage):
-            self.queue.put_nowait({"type": "websocket.receive", "text": event.data})
-        elif isinstance(event, wsproto.events.Message):
-            self.queue.put_nowait({"type": "websocket.receive", "bytes": event.data})
-        elif isinstance(event, wsproto.events.CloseConnection):
-            self.queue.put_nowait({"type": "websocket.disconnect", "code": event.code})
-
-    async def run_asgi(self, app: AsgiApplication) -> None:
-        print(5)
-        self.queue.put_nowait({"type": "websocket.connect"})
-
+    def stream_closed(self, stream_id: int) -> None:
         try:
-            await app(self.scope, self.receive, self.send)
-        finally:
-            if not self.closed:
-                await self.send({"type": "websocket.close", "code": 1000})
-
-    async def receive(self) -> Dict:
-        print(3)
-        return await self.queue.get()
-
-    async def send(self, message: Dict) -> None:
-        print(5)
-        data = b""
-        end_stream = False
-        if message["type"] == "websocket.accept":
-            subprotocol = message.get("subprotocol")
-
-            self.websocket = wsproto.Connection(wsproto.ConnectionType.SERVER)
-
-            headers = [
-                (b":status", b"200"),
-                (b"server", SERVER_NAME.encode()),
-                (b"date", formatdate(time.time(), usegmt=True).encode()),
-            ]
-            if subprotocol is not None:
-                headers.append((b"sec-websocket-protocol", subprotocol.encode()))
-            self.connection.send_headers(stream_id=self.stream_id, headers=headers)
-
-            # consume backlog
-            while self.http_event_queue:
-                self.http_event_received(self.http_event_queue.popleft())
-
-        elif message["type"] == "websocket.close":
-            if self.websocket is not None:
-                data = self.websocket.send(
-                    wsproto.events.CloseConnection(code=message["code"])
-                )
-            else:
-                self.connection.send_headers(
-                    stream_id=self.stream_id, headers=[(b":status", b"403")]
-                )
-            end_stream = True
-        elif message["type"] == "websocket.send":
-            if message.get("text") is not None:
-                data = self.websocket.send(
-                    wsproto.events.TextMessage(data=message["text"])
-                )
-            elif message.get("bytes") is not None:
-                data = self.websocket.send(
-                    wsproto.events.Message(data=message["bytes"])
-                )
-
-        if data:
-            self.connection.send_data(
-                stream_id=self.stream_id, data=data, end_stream=end_stream
-            )
-        if end_stream:
-            self.closed = True
-        self.transmit()
+            del self._counters[stream_id]
+        except KeyError:
+            pass
 
 
-class WebTransportHandler:
-    def __init__(
-        self,
-        *,
-        connection: HttpConnection,
-        scope: Dict,
-        stream_id: int,
-        transmit: Callable[[], None],
-    ) -> None:
-        self.accepted = False
-        self.closed = False
-        self.connection = connection
-        self.http_event_queue: Deque[DataReceived] = deque()
-        self.queue: asyncio.Queue[Dict] = asyncio.Queue()
-        self.scope = scope
-        self.stream_id = stream_id
-        self.transmit = transmit
+class WebTransportProtocol(QuicConnectionProtocol):
 
-    def http_event_received(self, event: H3Event) -> None:
-        print(2)
-        if not self.closed:
-            if self.accepted:
-                if isinstance(event, DatagramReceived):
-                    self.queue.put_nowait(
-                        {
-                            "data": event.data,
-                            "type": "webtransport.datagram.receive",
-                        }
-                    )
-                elif isinstance(event, WebTransportStreamDataReceived):
-                    self.queue.put_nowait(
-                        {
-                            "data": event.data,
-                            "stream": event.stream_id,
-                            "type": "webtransport.stream.receive",
-                        }
-                    )
-            else:
-                # delay event processing until we get `webtransport.accept`
-                # from the ASGI application
-                self.http_event_queue.append(event)
-
-    async def run_asgi(self, app: AsgiApplication) -> None:
-        print(5)
-        self.queue.put_nowait({"type": "webtransport.connect"})
-
-        try:
-            await app(self.scope, self.receive, self.send)
-        finally:
-            if not self.closed:
-                await self.send({"type": "webtransport.close"})
-
-    async def receive(self) -> Dict:
-        return await self.queue.get()
-
-    async def send(self, message: Dict) -> None:
-        data = b""
-        end_stream = False
-
-        if message["type"] == "webtransport.accept":
-            self.accepted = True
-
-            headers = [
-                (b":status", b"200"),
-                (b"server", SERVER_NAME.encode()),
-                (b"date", formatdate(time.time(), usegmt=True).encode()),
-                (b"sec-webtransport-http3-draft", b"draft02"),
-            ]
-            self.connection.send_headers(stream_id=self.stream_id, headers=headers)
-
-            # consume backlog
-            while self.http_event_queue:
-                self.http_event_received(self.http_event_queue.popleft())
-        elif message["type"] == "webtransport.close":
-            if not self.accepted:
-                self.connection.send_headers(
-                    stream_id=self.stream_id, headers=[(b":status", b"403")]
-                )
-            end_stream = True
-        elif message["type"] == "webtransport.datagram.send":
-            self.connection.send_datagram(flow_id=self.stream_id, data=message["data"])
-        elif message["type"] == "webtransport.stream.send":
-            self.connection._quic.send_stream_data(
-                stream_id=message["stream"], data=message["data"]
-            )
-
-        if data or end_stream:
-            self.connection.send_data(
-                stream_id=self.stream_id, data=data, end_stream=end_stream
-            )
-        if end_stream:
-            self.closed = True
-        self.transmit()
-
-
-Handler = Union[HttpRequestHandler, WebSocketHandler, WebTransportHandler]
-
-
-class HttpServerProtocol(QuicConnectionProtocol):
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
-        self._handlers: Dict[int, Handler] = {}
-        self._http: Optional[HttpConnection] = None
-
-    def http_event_received(self, event: H3Event) -> None:
-        print(1)
-        if isinstance(event, HeadersReceived) and event.stream_id not in self._handlers:
-            authority = None
-            headers = []
-            http_version = "0.9" if isinstance(self._http, H0Connection) else "3"
-            raw_path = b"asd"
-            method = ""
-            protocol = None
-            for header, value in event.headers:
-                if header == b":authority":
-                    authority = value
-                    headers.append((b"host", value))
-                elif header == b":method":
-                    method = value.decode()
-                elif header == b":path":
-                    raw_path = value
-                elif header == b":protocol":
-                    protocol = value.decode()
-                elif header and not header.startswith(b":"):
-                    headers.append((header, value))
-
-            if b"?" in raw_path:
-                path_bytes, query_string = raw_path.split(b"?", maxsplit=1)
-            else:
-                path_bytes, query_string = raw_path, b""
-            path = path_bytes.decode()
-            print("HTTP request %s %s", method, path)
-            self._quic._logger.info("HTTP request %s %s", method, path)
-
-            # FIXME: add a public API to retrieve peer address
-            client_addr = self._http._quic._network_paths[0].addr
-            client = (client_addr[0], client_addr[1])
-
-            handler: Handler
-            scope: Dict
-            if method == "CONNECT" and protocol == "websocket":
-                subprotocols: List[str] = []
-                for header, value in event.headers:
-                    if header == b"sec-websocket-protocol":
-                        subprotocols = [x.strip() for x in value.decode().split(",")]
-                scope = {
-                    "client": client,
-                    "headers": headers,
-                    "http_version": http_version,
-                    "method": method,
-                    "path": path,
-                    "query_string": query_string,
-                    "raw_path": raw_path,
-                    "root_path": "",
-                    "scheme": "wss",
-                    "subprotocols": subprotocols,
-                    "type": "websocket",
-                }
-                handler = WebSocketHandler(
-                    connection=self._http,
-                    scope=scope,
-                    stream_id=event.stream_id,
-                    transmit=self.transmit,
-                )
-            elif method == "CONNECT" and protocol == "webtransport":
-                scope = {
-                    "client": client,
-                    "headers": headers,
-                    "http_version": http_version,
-                    "method": method,
-                    "path": path,
-                    "query_string": query_string,
-                    "raw_path": raw_path,
-                    "root_path": "",
-                    "scheme": "https",
-                    "type": "webtransport",
-                }
-                handler = WebTransportHandler(
-                    connection=self._http,
-                    scope=scope,
-                    stream_id=event.stream_id,
-                    transmit=self.transmit,
-                )
-            else:
-                extensions: Dict[str, Dict] = {}
-                if isinstance(self._http, H3Connection):
-                    extensions["http.response.push"] = {}
-                scope = {
-                    "client": client,
-                    "extensions": extensions,
-                    "headers": headers,
-                    "http_version": http_version,
-                    "method": method,
-                    "path": path,
-                    "query_string": query_string,
-                    "raw_path": raw_path,
-                    "root_path": "",
-                    "scheme": "https",
-                    "type": "http",
-                }
-                handler = HttpRequestHandler(
-                    authority=authority,
-                    connection=self._http,
-                    protocol=self,
-                    scope=scope,
-                    stream_ended=event.stream_ended,
-                    stream_id=event.stream_id,
-                    transmit=self.transmit,
-                )
-            self._handlers[event.stream_id] = handler
-            asyncio.ensure_future(handler.run_asgi(application))
-        elif (
-            isinstance(event, (DataReceived, HeadersReceived))
-            and event.stream_id in self._handlers
-        ):
-            handler = self._handlers[event.stream_id]
-            handler.http_event_received(event)
-        elif isinstance(event, DatagramReceived):
-            handler = self._handlers[event.flow_id]
-            handler.http_event_received(event)
-        elif isinstance(event, WebTransportStreamDataReceived):
-            handler = self._handlers[event.session_id]
-            handler.http_event_received(event)
+        self._http: Optional[H3Connection] = None
+        self._handler: Optional[CounterHandler] = None
 
     def quic_event_received(self, event: QuicEvent) -> None:
         if isinstance(event, ProtocolNegotiated):
-            if event.alpn_protocol in H3_ALPN:
-                self._http = H3Connection(self._quic, enable_webtransport=True)
-            elif event.alpn_protocol in H0_ALPN:
-                self._http = H0Connection(self._quic)
-        elif isinstance(event, DatagramFrameReceived):
-            if event.data == b"quack":
-                self._quic.send_datagram_frame(b"quack-ack")
+            self._http = H3Connection(self._quic, enable_webtransport=True)
+        elif isinstance(event, StreamReset) and self._handler is not None:
+            # Streams in QUIC can be closed in two ways: normal (FIN) and
+            # abnormal (resets).  FIN is handled by the handler; the code
+            # below handles the resets.
+            self._handler.stream_closed(event.stream_id)
 
-        #  pass event to the HTTP layer
         if self._http is not None:
-            for http_event in self._http.handle_event(event):
-                self.http_event_received(http_event)
+            for h3_event in self._http.handle_event(event):
+                self._h3_event_received(h3_event)
+
+    def _h3_event_received(self, event: H3Event) -> None:
+        if isinstance(event, HeadersReceived):
+            headers = {}
+            for header, value in event.headers:
+                headers[header] = value
+            if (headers.get(b":method") == b"CONNECT" and
+                    headers.get(b":protocol") == b"webtransport"):
+                self._handshake_webtransport(event.stream_id, headers)
+            else:
+                self._send_response(event.stream_id, 400, end_stream=True)
+
+        if self._handler:
+            self._handler.h3_event_received(event)
+
+    def _handshake_webtransport(self,
+                                stream_id: int,
+                                request_headers: Dict[bytes, bytes]) -> None:
+        authority = request_headers.get(b":authority")
+        path = request_headers.get(b":path")
+        if authority is None or path is None:
+            # `:authority` and `:path` must be provided.
+            self._send_response(stream_id, 400, end_stream=True)
+            return
+        if path == b"/counter":
+            assert(self._handler is None)
+            self._handler = CounterHandler(stream_id, self._http)
+            self._send_response(stream_id, 200)
+        else:
+            self._send_response(stream_id, 404, end_stream=True)
+
+    def _send_response(self,
+                       stream_id: int,
+                       status_code: int,
+                       end_stream=False) -> None:
+        headers = [(b":status", str(status_code).encode())]
+        if status_code == 200:
+            headers.append((b"sec-webtransport-http3-draft", b"draft02"))
+        self._http.send_headers(
+            stream_id=stream_id, headers=headers, end_stream=end_stream)
 
 
-class SessionTicketStore:
-    """
-    Simple in-memory store for session tickets.
-    """
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument('certificate')
+    parser.add_argument('key')
+    args = parser.parse_args()
 
-    def __init__(self) -> None:
-        self.tickets: Dict[bytes, SessionTicket] = {}
-
-    def add(self, ticket: SessionTicket) -> None:
-        self.tickets[ticket.ticket] = ticket
-
-    def pop(self, label: bytes) -> Optional[SessionTicket]:
-        return self.tickets.pop(label, None)
-
-
-async def main(
-    host: str,
-    port: int,
-    configuration: QuicConfiguration,
-    session_ticket_store: SessionTicketStore,
-    retry: bool,
-) -> None:
-    print("connect")
-    a, b, c, d = await serve(
-        host,
-        port,
-        configuration=configuration,
-        create_protocol=HttpServerProtocol,
-        session_ticket_fetcher=session_ticket_store.pop,
-        session_ticket_handler=session_ticket_store.add,
-        retry=retry,
-    )
-    print("connect done")
-    write, red = await asyncio.Future()
-
-
-if __name__ == "__main__":
-    # create QUIC logger
-
-    quic_logger = QuicLogger()
-
-    # open SSL log file
-
-    secrets_log_file = open("log.txt", "a")
     configuration = QuicConfiguration(
-        alpn_protocols=H3_ALPN + H0_ALPN + ["siduck"],
+        alpn_protocols=H3_ALPN,
         is_client=False,
         max_datagram_frame_size=65536,
-        quic_logger=quic_logger,
-        secrets_log_file=secrets_log_file,
     )
+    configuration.load_cert_chain(args.certificate, args.key)
 
-    # load SSL certificate and key
-    configuration.load_cert_chain(
-        os.path.join(os.path.abspath(os.curdir), "cert.pem"),
-        os.path.join(os.path.abspath(os.curdir), "key.pem"),
-    )
-
-    if uvloop is not None:
-        uvloop.install()
-
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(
+        serve(
+            BIND_ADDRESS,
+            BIND_PORT,
+            configuration=configuration,
+            create_protocol=WebTransportProtocol,
+        ))
     try:
-        asyncio.run(
-            main(
-                host="localhost",
-                port=4433,
-                configuration=configuration,
-                session_ticket_store=SessionTicketStore(),
-                retry=True,
-            )
-        )
+        logging.info(
+            "Listening on https://{}:{}".format(BIND_ADDRESS, BIND_PORT))
+        loop.run_forever()
     except KeyboardInterrupt:
         pass

@@ -46,11 +46,9 @@ class MyConnection:
                     k = np.average(hist[1:])
                     time_taken = time.time() - float(send_time) - k
                     temp["offset"] = k
-                    # print("hist ",temp["offset"])
                 else:
                     time_taken = time.time() - float(send_time) - float(offset)
                     temp["offset"] = float(offset)
-                    # print("not hist ",temp["offset"])
                 total_data += data
                 temp["data"] = total_data
                 temp["id"] = index
@@ -91,8 +89,6 @@ class MyServerProtocol(QuicConnectionProtocol):
         self._myConn: Optional[MyConnection] = None
 
     def quic_event_received(self, event: QuicEvent) -> None:
-        # print("receieved a connection")
-        # python QUIC_Server.py -c keys/RootCA.crt -k keys/RootCA.key
         self._myConn = MyConnection(self._quic)
         self._myConn.handle_event(event)
 
@@ -174,7 +170,7 @@ def processing(server, data_queue):
             frame = data_queue.get()
             t2 = time.time()
 
-            if frame["time_taken"] + (t2 - frame["t1"]) < 10:
+            if frame["time_taken"] + (t2 - frame["t1"]) < 0.15:
                 print("frame ", frame["id"], " processing")
                 server_reply = frame["id"] + "processed"
                 server.quic_obj.server_send(server_reply)
@@ -252,6 +248,7 @@ def download_file(server):
 
 
 frames = []
+ids = []
 
 
 def save_file():
@@ -266,6 +263,35 @@ def save_file():
     with open("C:\\Users\\gotom\\OneDrive\\Рабочий стол\\Диплом\\QUIC\\file.txt", 'wb') as file:
         for data in frames:
             file.write(data)
+
+async def save_frame(frame, data_queue: Queue, quic_server, time_frame, timer):
+        temp = dict()
+        temp["frame"] = frame
+        temp["time_taken"] = time_frame
+        temp["t1"] = time.time()
+        temp["id"] = id
+
+        data_queue.put(temp)
+        try:
+            if frame.decode("utf-8").split(",")[-1] == "start":
+                print("start")
+                return
+        except Exception:
+            print("error_start")
+        try:
+            if frame.decode("utf-8").split(",")[-1] == "all":
+                save_file()
+                print("OK")
+                quic_server.quic_obj.server_send(str.encode("Exit"))
+                return
+        except Exception:
+            print("error all")
+        frames.append(frame)
+        end_time = time.monotonic()
+        duration = end_time - timer
+        date_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
+        with open(f'C:\\Users\\gotom\\OneDrive\\Рабочий стол\\Диплом\\QUIC\\download_time.txt', 'a') as f:
+            f.write(f'{date_time} - Download took {duration:.3f} seconds\n')
 
 
 def main():
@@ -288,11 +314,10 @@ def main():
     prc_thread = threading.Thread(target=processing, args=(quic_server, data_queue))
     prc_thread.start()
     counter = 0
-    timer = None
     while True:
+        timer = time.monotonic()
         id, frame, time_frame, type, next_code = quic_server.quic_obj.recieve()
         print(id)
-
         if id is not None:
             temp = dict()
             temp["frame"] = frame
@@ -303,18 +328,13 @@ def main():
             data_queue.put(temp)
             try:
                 if frame.decode("utf-8").split(",")[-1] == "start":
-                    timer = time.monotonic()
+
                     print("start")
                     continue
             except Exception:
                 print("error_start")
             try:
                 if frame.decode("utf-8").split(",")[-1] == "all":
-                    end_time = time.monotonic()
-                    duration = end_time - timer
-                    date_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
-                    with open(f'C:\\Users\\gotom\\OneDrive\\Рабочий стол\\Диплом\\QUIC\\download_time.txt', 'a') as f:
-                        f.write(f'{date_time} - Download took {duration:.3f} seconds\n')
                     save_file()
                     print("OK")
                     quic_server.quic_obj.server_send(str.encode("Exit"))
@@ -322,7 +342,11 @@ def main():
             except Exception:
                 print("error all")
             frames.append(frame)
-
+            end_time = time.monotonic()
+            duration = end_time - timer
+            date_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
+            with open(f'C:\\Users\\gotom\\OneDrive\\Рабочий стол\\Диплом\\QUIC\\download_time.txt', 'a') as f:
+                f.write(f'{date_time} - Download took {duration:.3f} seconds\n')
         else:
             if counter > 10:
                 exit()
