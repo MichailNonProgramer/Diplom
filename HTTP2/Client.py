@@ -7,15 +7,14 @@ import ssl
 import time
 from datetime import datetime
 
-semaphore = asyncio.Semaphore(1)
+semaphore = asyncio.Semaphore(10)
 
-async def download_file(session, filename):
+async def download_file(session, filename, i, start_time):
     url = 'https://localhost:8444/download'
     if os.path.exists(filename):
         os.remove(filename)
     async with semaphore:
-        start_time = time.monotonic()
-        async with session.get(url) as response:
+        async with session.get(url, params={"file": f"file_{i}.txt"}) as response:
             with open(filename, 'wb') as file:
                 async for chunk in response.content.iter_chunked(1024):
                     file.write(chunk)
@@ -25,7 +24,7 @@ async def download_file(session, filename):
     date_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
 
     with open(f'download_with_lock.txt', 'a') as f:
-        f.write(f'{date_time} - Download took {duration:.3f} seconds\n')
+        f.write(f'{date_time} - Download took file{i} {duration:.3f} seconds\n')
 
 async def run_client():
     ssl_context = ssl.SSLContext(ssl.PROTOCOL_SSLv23)
@@ -38,21 +37,22 @@ async def run_client():
     connector = aiohttp.TCPConnector(ssl=ssl_context)
     timeout = aiohttp.ClientTimeout(total=60)
     all_time = time.monotonic()
+    start_time = time.monotonic()
     async with aiohttp.ClientSession(connector=connector, timeout=timeout) as session:
-        NUM_OF_REQUESTS = 100
+        NUM_OF_REQUESTS = 10
         current_dir = os.getcwd()
         folder_name = 'save'
         new_dir = os.path.join(current_dir, folder_name)
         if not os.path.exists(new_dir):
             os.makedirs(new_dir)
-        filenames = [os.path.join(new_dir, f'bigfile_downloaded_{i}.txt') for i in range(NUM_OF_REQUESTS)]
-        tasks = [download_file(session, filename) for filename in filenames]
+        filenames = [os.path.join(new_dir, f'file_downloaded_{i + 1}.txt') for i in range(NUM_OF_REQUESTS)]
+        tasks = [download_file(session, filename, index + 1, start_time) for index, filename in enumerate(filenames)]
         await asyncio.gather(*tasks)
         end_timeAllTime = time.monotonic()
         duration = end_timeAllTime - all_time
         date_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
         with open(f'AllTimeFile.txt', 'a') as f:
-            f.write(f'{date_time} - download_with_lock {duration:.3f} seconds\n')
+            f.write(f'{date_time} - download_with_packet_loss {duration:.3f} seconds\n')
 
 
 if __name__ == '__main__':

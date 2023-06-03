@@ -217,13 +217,13 @@ def parse(name):
     parser.add_argument(
         "--maxdata",
         type=int,
-        default=1048576,
+        default=99999999999,
         help="connection-wide flow control limit (default: %d)" % QuicConfiguration.max_data,
     )
     parser.add_argument(
         "--maxstreamdata",
         type=int,
-        default=1048576,
+        default=99999999999,
         help="per-stream flow control limit (default: %d)" % QuicConfiguration.max_stream_data,
     )
 
@@ -248,7 +248,7 @@ def main():
         from aioquic.quic import configuration
         configuration.verify_mode = ssl.CERT_NONE
 
-    quic_client = quicconnectclient(args.host, args.port, args.verbose, args.maxdata, args.maxstreamdata, args.quic_log)
+    quic_client = quicconnectclient("127.0.0.1", 4433, True, 99999999999, 99999999999, None)
 
     print("sending test data ", len(test_data), " times")
     quic_client.quic_obj.send_frame("start".encode("utf-8"))

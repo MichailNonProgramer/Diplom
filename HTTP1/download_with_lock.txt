@@ -1,0 +1,10 @@
+2023-06-03 15:13:54.577 filePi1- Download took 0.047 seconds
+2023-06-03 15:13:54.588 filePi2- Download took 0.047 seconds
+2023-06-03 15:13:54.681 filePi3- Download took 0.140 seconds
+2023-06-03 15:13:54.695 filePi4- Download took 0.156 seconds
+2023-06-03 15:13:54.711 filePi5- Download took 0.172 seconds
+2023-06-03 15:13:54.798 filePi6- Download took 0.265 seconds
+2023-06-03 15:13:54.813 filePi7- Download took 0.281 seconds
+2023-06-03 15:13:54.829 filePi8- Download took 0.297 seconds
+2023-06-03 15:13:54.911 filePi9- Download took 0.375 seconds
+2023-06-03 15:13:54.924 filePi10- Download took 0.390 seconds

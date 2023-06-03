@@ -155,6 +155,8 @@ class quicconnectserver():
             self.configuration = QuicConfiguration(is_client=False, quic_logger=None)
         self.configuration.load_cert_chain(certificate, private_key)
         self.configuration.verify_mode = ssl.CERT_NONE
+        self.configuration.max_data = 99999999999
+        self.configuration.max_stream_data = 99999999999
         self.hostip = host
         self.portnr = port
         self.quic_obj = self.create_quic_server_object()
@@ -313,11 +315,8 @@ async def save_frame(data_queue: Queue, quic_server, counter):
 def main():
     print("frame,time,offset,recv time")
 
-    args = parse("Parse server args")
-
     data_queue = Queue()
-    quic_server = quicconnectserver(args.host, args.port, args.certificate, args.private_key, args.verbose,
-                                    args.quic_log)
+    quic_server = quicconnectserver("127.0.0.1", 4433, "certs/ssl_cert.pem", "certs/ssl_key.pem", True, "")
     prc_thread = threading.Thread(target=processing, args=(quic_server, data_queue))
     prc_thread.start()
     counter = 0
