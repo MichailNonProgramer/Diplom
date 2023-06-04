@@ -22,3 +22,11 @@
 2023-06-04 14:49:17.264 - download_with_packet_loss 0.265 seconds
 2023-06-04 14:49:23.542 - download_with_packet_loss 0.281 seconds
 2023-06-04 14:49:27.775 - download_with_packet_loss 0.234 seconds
+2023-06-04 14:56:41.160 - download_with_packet_loss 0.297 seconds
+2023-06-04 14:57:20.264 - download_with_packet_loss 0.328 seconds
+2023-06-04 14:59:10.931 - download_with_packet_loss 0.297 seconds
+2023-06-04 15:02:25.233 - download_with_packet_loss 0.015 seconds
+2023-06-04 15:02:39.458 - download_with_packet_loss 0.297 seconds
+2023-06-04 15:04:45.503 - download_with_packet_loss 0.360 seconds
+2023-06-04 15:06:38.226 - download_with_packet_loss 0.938 seconds
+2023-06-04 15:06:44.625 - download_with_packet_loss 0.797 seconds

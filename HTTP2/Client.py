@@ -9,15 +9,23 @@ from datetime import datetime
 
 semaphore = asyncio.Semaphore(10)
 
+
+async def download(session, filename, i, start_time, url):
+    try:
+        async with session.get(url, params={"file": f"file_{i}.txt"}) as response:
+            with open(filename, 'wb') as file:
+                async for chunk in response.content.iter_chunked(1024):
+                    file.write(chunk)
+    except Exception:
+        await download(session, filename, i, start_time, url)
+
+
 async def download_file(session, filename, i, start_time):
     url = 'https://localhost:8444/download_with_packet_loss'
     if os.path.exists(filename):
         os.remove(filename)
     async with semaphore:
-        async with session.get(url, params={"file": f"file_{i}.txt"}) as response:
-            with open(filename, 'wb') as file:
-                async for chunk in response.content.iter_chunked(1024):
-                    file.write(chunk)
+        await download(session, filename, i, start_time, url)
         end_time = time.monotonic()
 
     duration = end_time - start_time
@@ -25,6 +33,7 @@ async def download_file(session, filename, i, start_time):
 
     with open(f'download_with_packet_loss.txt', 'a') as f:
         f.write(f'{date_time} - Download took file{i} {duration:.3f} seconds\n')
+
 
 async def run_client():
     ssl_context = ssl.SSLContext(ssl.PROTOCOL_SSLv23)
