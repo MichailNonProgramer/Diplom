@@ -1,10 +1,10 @@
-2023-05-21 18:03:04.668 - Download took 6.391 seconds
-2023-05-21 18:03:04.670 - Download took 0.000 seconds
-2023-05-21 18:03:13.878 - Download took 9.203 seconds
-2023-05-21 18:03:24.096 - Download took 10.219 seconds
-2023-05-21 18:03:29.301 - Download took 5.203 seconds
-2023-05-21 18:03:38.519 - Download took 9.218 seconds
-2023-05-21 18:03:48.728 - Download took 10.204 seconds
-2023-05-21 18:03:58.920 - Download took 10.203 seconds
-2023-05-21 18:04:04.134 - Download took 5.203 seconds
-2023-05-21 18:04:11.328 - Download took 7.203 seconds
+2023-06-04 14:49:27.575 - Download took file3 0.047 seconds
+2023-06-04 14:49:27.576 - Download took file5 0.047 seconds
+2023-06-04 14:49:27.609 - Download took file1 0.078 seconds
+2023-06-04 14:49:27.611 - Download took file2 0.078 seconds
+2023-06-04 14:49:27.617 - Download took file7 0.078 seconds
+2023-06-04 14:49:27.628 - Download took file4 0.094 seconds
+2023-06-04 14:49:27.665 - Download took file10 0.125 seconds
+2023-06-04 14:49:27.670 - Download took file8 0.141 seconds
+2023-06-04 14:49:27.773 - Download took file6 0.234 seconds
+2023-06-04 14:49:27.775 - Download took file9 0.234 seconds

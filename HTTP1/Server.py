@@ -45,15 +45,10 @@ async def download_with_lock(request):
 
 
 async def download_with_packet_loss(request):
-    async with semaphore:
-        delay = random.randint(5, 10)
-
         # Добавляем искусственную потерю пакетов
         if random.randint(1, 10) == 10:
             return web.Response(status=500)
-
-        await asyncio.sleep(delay)
-        return await download_file(request.json["file"])
+        return await download(request)
 
 
 app = web.Application()

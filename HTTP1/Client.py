@@ -27,7 +27,7 @@ async def download_mini(session, filename):
 
 
 async def download_file(session, filename, i, start_time):
-    url = 'https://localhost:8443/download_with_lock'
+    url = 'https://localhost:8443/download_with_packet_loss'
     if os.path.exists(filename):
         os.remove(filename)
     async with semaphore:
@@ -43,7 +43,7 @@ async def download_file(session, filename, i, start_time):
     duration = end_time - start_time
     date_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
 
-    with open(f'download_with_lock.txt', 'a') as f:
+    with open(f'download_with_packet_loss.txt', 'a') as f:
         f.write(f'{date_time} filePi{i}- Download took {duration:.3f} seconds\n')
 
 

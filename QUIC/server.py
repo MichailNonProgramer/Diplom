@@ -59,6 +59,7 @@ class MyConnection:
                 frame_data.append(temp)
                 total_data = bytes()
                 ack = "frame " + str(index) + " recieved"
+                print(123)
                 self._quic.send_stream_data(event.stream_id, bytes(ack.encode()), True)
             elif (dd == 1):
                 send_time, offset, index, data = data.decode('latin-1').split(",", 3)

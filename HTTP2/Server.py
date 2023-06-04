@@ -27,7 +27,7 @@ semaphore = asyncio.Semaphore(10)
 async def download_with_lock(request):
     async with semaphore:
         delay = random.randint(5, 10)
-        with open(f'download_times_with_holl_locking_timeout.txt', 'a') as f:
+        with open(f'download_times_with_packet_loss.txt', 'a') as f:
             f.write(f'{delay:.3f} seconds\n')
         await asyncio.sleep(delay)
         return await download_file(request)
@@ -35,13 +35,9 @@ async def download_with_lock(request):
 
 async def download_with_packet_loss(request):
     async with semaphore:
-        delay = random.randint(5, 10)
-
-        # Добавляем искусственную потерю пакетов
         if random.randint(1, 10) == 10:
             return web.Response(status=500)
 
-        await asyncio.sleep(delay)
         return await download_file(request)
 
 
