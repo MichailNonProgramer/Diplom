@@ -4,17 +4,19 @@ import time
 from tlspskPackage import TLSClientSession
 from datetime import datetime, timedelta, timezone
 
-psk ="adsfg".encode("utf8")
-iccid="1521".encode("utf8")
-def main():
+psk = "adsfg".encode("utf8")
+iccid = "1521".encode("utf8")
 
+
+def main():
     quit = False
     sock = None
 
     server = '34.253.244.76'
     port = 11111
+
     # server = "127.0.0.1"
-    # port = 443
+    # port = 4433
 
     def callback(data):
         nonlocal quit, sock
@@ -36,7 +38,7 @@ def main():
     step = 0
     while not quit:
         step += 1
-        server_data = sock.recv(10*4096)
+        server_data = sock.recv(10 * 4096)
         if len(server_data) > 0:
             print("step {0}: {1}".format(step, server_data.hex()))
         parser.send(server_data)

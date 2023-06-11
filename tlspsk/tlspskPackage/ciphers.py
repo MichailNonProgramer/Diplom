@@ -58,7 +58,7 @@ class TLS_AEAD_Cipher(abc.ABC):
         cipher = self.cipher()
         cipher.update(associated_data)
         return cipher.decrypt_and_verify(
-            ciphertext[: -self.MAC_LEN], ciphertext[-self.MAC_LEN :]
+            ciphertext[: -self.MAC_LEN], ciphertext[-self.MAC_LEN:]
         )
 
     def encrypt(self, plaintext, associated_data):

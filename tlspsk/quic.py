@@ -41,8 +41,6 @@ class StreamFlag(enum.IntFlag):
     STREAM = 0x80
     STREAM_FINISHED = 0x40
     STREAM_DATA_LENGTH_PRESENT = 0x20
-    # STREAM_DATA_OFFSET_LENGTH = 0x1C
-    # STREAM_ID_LENGTH = 0x03
 
 
 class AckFlag(enum.IntFlag):
